@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FacilitaParaguay - Setup & Monitor</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:-apple-system,sans-serif;background:#0f172a;color:#e2e8f0;padding:16px;max-width:600px;margin:0 auto;}
+h1{font-size:1.2rem;margin-bottom:4px;display:flex;align-items:center;gap:8px;}
+.sub{color:#64748b;font-size:.78rem;margin-bottom:16px;}
+.status-bar{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:14px;margin-bottom:14px;}
+.status-bar .label{font-size:.7rem;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;}
+.status-bar .val{font-size:1.4rem;font-weight:800;color:#3b82f6;}
+.status-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;}
+.btn-all{width:100%;padding:14px;background:linear-gradient(135deg,#10b981,#14b8a6);color:#fff;border:none;border-radius:12px;font-size:1rem;font-weight:700;cursor:pointer;margin-bottom:14px;transition:.2s;}
+.btn-all:active{transform:scale(.98);}
+.btn-all:disabled{opacity:.5;cursor:not-allowed;}
+.btn-stop{width:100%;padding:10px;background:#ef4444;color:#fff;border:none;border-radius:10px;font-size:.85rem;font-weight:600;cursor:pointer;margin-bottom:14px;display:none;}
+.store-list{display:flex;flex-direction:column;gap:6px;margin-bottom:14px;}
+.store{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;transition:.2s;}
+.store.running{border-color:#f59e0b;background:#1e293b;}
+.store.done{border-color:#10b981;}
+.store.error{border-color:#ef4444;}
+.store .s-name{font-weight:600;font-size:.85rem;}
+.store .s-count{font-size:.7rem;color:#64748b;}
+.store .s-count.has{color:#10b981;}
+.store .s-status{font-size:.65rem;padding:3px 8px;border-radius:6px;font-weight:600;}
+.s-idle{background:#334155;color:#94a3b8;}
+.s-running{background:#f59e0b;color:#000;animation:pulse 1s infinite;}
+.s-done{background:#10b981;color:#fff;}
+.s-error{background:#ef4444;color:#fff;}
+.store .s-btn{background:#3b82f6;color:#fff;border:none;padding:6px 12px;border-radius:8px;font-size:.72rem;font-weight:600;cursor:pointer;}
+.store .s-btn:disabled{opacity:.4;}
+.log-section{margin-top:14px;}
+.log-title{font-size:.85rem;font-weight:600;margin-bottom:8px;color:#94a3b8;}
+.log{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:10px;max-height:300px;overflow-y:auto;font-family:monospace;font-size:.7rem;line-height:1.6;color:#94a3b8;}
+.log .ok{color:#10b981;}.log .err{color:#ef4444;}.log .warn{color:#f59e0b;}.log .info{color:#3b82f6;}
+.refresh-bar{display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:.72rem;color:#64748b;}
+.refresh-bar .dot{width:8px;height:8px;border-radius:50%;background:#10b981;animation:pulse 2s infinite;}
+.refresh-bar select{background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:6px;padding:4px 8px;font-size:.72rem;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.progress{height:4px;background:#334155;border-radius:2px;margin:8px 0;overflow:hidden;}
+.progress-bar{height:100%;background:linear-gradient(90deg,#3b82f6,#10b981);border-radius:2px;transition:width .5s;width:0%;}
+</style>
+</head>
+<body>
+
+<h1>
+  <svg viewBox="0 0 120 120" width="28" height="28"><defs><clipPath id="c"><circle cx="48" cy="48" r="34"/></clipPath></defs><g><circle cx="48" cy="48" r="38" fill="none" stroke="#1a3d7c" stroke-width="6"/><line x1="74" y1="74" x2="100" y2="100" stroke="#1a3d7c" stroke-width="8" stroke-linecap="round"/></g><g clip-path="url(#c)"><rect x="14" y="14" width="68" height="23" fill="#d32f2f"/><rect x="14" y="37" width="68" height="22" fill="#fff"/><rect x="14" y="59" width="68" height="23" fill="#1565c0"/></g></svg>
+  Setup & Monitor
+</h1>
+<div class="sub">Painel de controle do scraping - acompanhe em tempo real</div>
+
+<div class="refresh-bar">
+  <span class="dot"></span> Auto-refresh
+  <select id="refresh-interval" onchange="setRefresh(this.value)">
+    <option value="5">5s</option><option value="10" selected>10s</option><option value="30">30s</option><option value="0">Off</option>
+  </select>
+  <span id="last-update">...</span>
+</div>
+
+<div class="status-row" id="status-row">
+  <div class="status-bar"><div class="label">Produtos</div><div class="val" id="st-prods">-</div></div>
+  <div class="status-bar"><div class="label">Lojas</div><div class="val" id="st-stores">-</div></div>
+  <div class="status-bar"><div class="label">Status</div><div class="val" id="st-status">-</div></div>
+</div>
+
+<div class="progress"><div class="progress-bar" id="progress-bar"></div></div>
+
+<button class="btn-all" id="btn-all" onclick="scrapeAll()">Iniciar Scraping (20 lojas)</button>
+
+<div class="store-list" id="store-list">Carregando...</div>
+
+<div class="log-section">
+  <div class="log-title">Log de atividade</div>
+  <div class="log" id="log"></div>
+</div>
+
+<script>
+const A='/api';
+let refreshTimer=null;
+let runningStores=new Set();
+
+function log(msg,cls='info'){
+  const el=document.getElementById('log');
+  const time=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  el.innerHTML=`<div class="${cls}">[${time}] ${msg}</div>`+el.innerHTML;
+  if(el.children.length>200)el.removeChild(el.lastChild);
+}
+
+async function refresh(){
+  try{
+    const[health,stores]=await Promise.all([
+      fetch(A+'/health').then(r=>r.json()),
+      fetch(A+'/stores').then(r=>r.json())
+    ]);
+
+    document.getElementById('st-prods').textContent=health.total_products||0;
+    document.getElementById('st-stores').textContent=health.total_stores||0;
+    document.getElementById('st-status').textContent=health.status||'?';
+    document.getElementById('st-status').style.color=health.status==='healthy'?'#10b981':'#f59e0b';
+
+    const list=document.getElementById('store-list');
+    list.innerHTML=stores.map(s=>{
+      const count=parseInt(s.product_count||0);
+      const promo=parseInt(s.promo_count||0);
+      const isRunning=runningStores.has(s.slug);
+      const cls=isRunning?'running':count>0?'done':'';
+      const statusCls=isRunning?'s-running':count>0?'s-done':'s-idle';
+      const statusText=isRunning?'Rodando...':count>0?`${count} produtos`:'Vazio';
+      return `<div class="store ${cls}">
+        <div>
+          <div class="s-name">${s.name}</div>
+          <div class="s-count ${count>0?'has':''}">${count} produtos ${promo>0?'('+promo+' promos)':''}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="s-status ${statusCls}">${statusText}</span>
+          <button class="s-btn" onclick="scrapeOne('${s.slug}')" ${isRunning?'disabled':''}>Scrape</button>
+        </div>
+      </div>`;
+    }).join('');
+
+    // Progress bar
+    const withData=stores.filter(s=>parseInt(s.product_count||0)>0).length;
+    document.getElementById('progress-bar').style.width=(withData/stores.length*100)+'%';
+
+    document.getElementById('last-update').textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR');
+  }catch(e){
+    log('Erro ao atualizar: '+e.message,'err');
+    document.getElementById('st-status').textContent='Offline';
+    document.getElementById('st-status').style.color='#ef4444';
+  }
+}
+
+async function scrapeOne(slug){
+  log(`Iniciando scrape: ${slug}`,'info');
+  runningStores.add(slug);
+  refresh();
+  try{
+    const r=await fetch(A+'/scrape/'+slug,{method:'POST'});
+    const d=await r.json();
+    log(`${slug}: ${d.message}`,'ok');
+  }catch(e){
+    log(`${slug}: Erro - ${e.message}`,'err');
+  }
+  // O scrape roda em background, remover após 2 min (estimativa)
+  setTimeout(()=>{runningStores.delete(slug);refresh();},120000);
+}
+
+async function scrapeAll(){
+  const btn=document.getElementById('btn-all');
+  btn.disabled=true;btn.textContent='Scraping em andamento...';
+  log('Iniciando scraping de TODAS as 20 lojas','warn');
+
+  try{
+    const r=await fetch(A+'/scrape/all',{method:'POST'});
+    const d=await r.json();
+    log(`Resposta: ${d.message}`,'ok');
+    if(d.stores)d.stores.forEach(s=>runningStores.add(s));
+    refresh();
+  }catch(e){
+    log('Erro ao iniciar scraping: '+e.message,'err');
+  }
+
+  // Re-enable after 10 min
+  setTimeout(()=>{
+    btn.disabled=false;btn.textContent='Iniciar Scraping (20 lojas)';
+    runningStores.clear();refresh();
+  },600000);
+}
+
+function setRefresh(secs){
+  if(refreshTimer)clearInterval(refreshTimer);
+  if(parseInt(secs)>0){
+    refreshTimer=setInterval(refresh,parseInt(secs)*1000);
+    log(`Auto-refresh: ${secs}s`,'info');
+  }else{
+    log('Auto-refresh desligado','warn');
+  }
+}
+
+// Init
+refresh();
+setRefresh(10);
+log('Setup carregado, monitorando...','ok');
+</script>
+</body>
+</html>
