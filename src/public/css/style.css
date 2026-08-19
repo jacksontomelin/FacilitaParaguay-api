@@ -13,6 +13,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro','Segoe UI',sans-serif
 .splash-svg{filter:drop-shadow(0 4px 20px rgba(30,107,214,.3));}
 .splash-name{font-size:1.4rem;font-weight:800;letter-spacing:-.3px;}
 .splash-text{color:#5b7ea5;font-size:.8rem;font-weight:500;animation:pulse 1.5s ease-in-out infinite;}
+.splash-steps{display:flex;flex-direction:column;gap:4px;margin-top:8px;font-size:.68rem;color:#3d5a80;max-width:220px;}
+.splash-steps .step{display:flex;align-items:center;gap:6px;opacity:0;animation:step-in .3s forwards;}
+.splash-steps .step .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+.splash-steps .step .dot.ok{background:#10b981;}
+.splash-steps .step .dot.loading{background:#f59e0b;animation:blink 1s infinite;}
+.splash-steps .step .dot.err{background:#ef4444;}
+@keyframes step-in{to{opacity:1}}
 .lupa-spin{transform-origin:48px 48px;animation:ls 2.2s ease-in-out infinite;}
 .lupa-arc{animation:ld 2.2s ease-in-out infinite;}
 @keyframes ls{0%{transform:rotate(0)}50%{transform:rotate(200deg)}100%{transform:rotate(360deg)}}
