@@ -417,39 +417,49 @@ async function runScraperTracked(slug) {
   try {
     tracker.log(slug, 'Criando scraper...');
     const scraper = createScraper(slug);
-    tracker.log(slug, 'Scraper criado, iniciando...');
+    tracker.log(slug, 'Scraper criado, verificando browser...');
 
-    // Interceptar console.log do scraper
+    // Interceptar console do scraper
     const origLog = console.log;
     const origErr = console.error;
-    const logInterceptor = (...args) => {
-      const msg = args.join(' ');
-      if (msg.includes(slug) || msg.includes(scraper.storeSlug)) {
-        tracker.log(slug, msg.replace(/\[.*?\]\s*/, ''));
-        // Extrair contagem de produtos
+    const logFn = (...args) => {
+      const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+      if (msg.includes(slug) || msg.includes(scraper.storeSlug || '')) {
+        tracker.log(slug, msg.replace(/\[.*?\]\s*/, '').substring(0, 200));
         const m = msg.match(/(\d+)\s*produtos?/i);
         if (m) tracker.update(slug, { products_found: parseInt(m[1]) });
       }
       origLog.apply(console, args);
     };
-    const errInterceptor = (...args) => {
-      const msg = args.join(' ');
-      if (msg.includes(slug) || msg.includes(scraper.storeSlug)) {
-        tracker.log(slug, 'ERRO: ' + msg.replace(/\[.*?\]\s*/, ''));
-        tracker.update(slug, { errors: (tracker.running[slug]?.errors || 0) + 1 });
-      }
+    const errFn = (...args) => {
+      const msg = args.map(a => typeof a === 'object' ? (a.message || JSON.stringify(a)) : String(a)).join(' ');
+      tracker.log(slug, 'ERRO: ' + msg.substring(0, 300));
+      tracker.update(slug, { errors: (tracker.running[slug]?.errors || 0) + 1 });
       origErr.apply(console, args);
     };
-    console.log = logInterceptor;
-    console.error = errInterceptor;
+    console.log = logFn;
+    console.error = errFn;
 
+    tracker.log(slug, 'Iniciando run()...');
     await scraper.run();
 
     console.log = origLog;
     console.error = origErr;
-    tracker.finish(slug, 'success', { products_found: scraper.stats?.found || 0 });
+
+    const found = scraper.stats?.found || 0;
+    const errors = scraper.stats?.errors || 0;
+    tracker.log(slug, `Finalizado: ${found} encontrados, ${errors} erros`);
+    tracker.finish(slug, found > 0 ? 'success' : 'empty', {
+      products_found: found,
+      products_new: scraper.stats?.new || 0,
+      products_updated: scraper.stats?.updated || 0,
+      scrape_errors: errors,
+    });
   } catch (err) {
-    tracker.log(slug, 'CRASH: ' + err.message);
+    // Restaurar console
+    if (console.log !== console.log) { /* already restored */ }
+    tracker.log(slug, 'CRASH: ' + (err.message || String(err)).substring(0, 500));
+    tracker.log(slug, 'Stack: ' + (err.stack || '').substring(0, 300));
     tracker.finish(slug, 'error', { error: err.message });
   }
 }
@@ -755,4 +765,58 @@ router.get('/ponte-status', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// GET /api/diagnostics - Verificar se Playwright/Chromium funciona
+router.get('/diagnostics', async (req, res) => {
+  const diag = { node: process.version, platform: process.platform, arch: process.arch, memory: {} };
+
+  // Memória
+  const mem = process.memoryUsage();
+  diag.memory = { rss: Math.round(mem.rss/1024/1024)+'MB', heap: Math.round(mem.heapUsed/1024/1024)+'MB' };
+
+  // Verificar Playwright
+  try {
+    const { chromium } = require('playwright');
+    diag.playwright = 'installed';
+    diag.chromium_path = process.env.CHROMIUM_PATH || 'auto';
+
+    // Tentar lançar browser
+    try {
+      const launchOpts = { headless: true, args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'] };
+      if (process.env.CHROMIUM_PATH) launchOpts.executablePath = process.env.CHROMIUM_PATH;
+      const browser = await chromium.launch(launchOpts);
+      const version = browser.version();
+      await browser.close();
+      diag.chromium_launch = 'OK';
+      diag.chromium_version = version;
+    } catch (e) {
+      diag.chromium_launch = 'FAILED';
+      diag.chromium_error = e.message;
+    }
+  } catch (e) {
+    diag.playwright = 'NOT_INSTALLED';
+    diag.playwright_error = e.message;
+  }
+
+  // Verificar banco
+  try {
+    const r = await pool.query('SELECT NOW() as t, (SELECT COUNT(*) FROM stores) as stores');
+    diag.database = 'OK';
+    diag.db_stores = parseInt(r.rows[0].stores);
+  } catch (e) {
+    diag.database = 'FAILED';
+    diag.db_error = e.message;
+  }
+
+  // Verificar env
+  diag.env = {
+    NODE_ENV: process.env.NODE_ENV || 'not set',
+    PORT: process.env.PORT || 'not set',
+    DATABASE_URL: process.env.DATABASE_URL ? 'set (hidden)' : 'NOT SET',
+    CHROMIUM_PATH: process.env.CHROMIUM_PATH || 'not set',
+    PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH || 'not set',
+  };
+
+  res.json(diag);
 });

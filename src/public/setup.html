@@ -71,6 +71,8 @@ h1{font-size:1.2rem;margin-bottom:4px;display:flex;align-items:center;gap:8px;}
 <div class="progress"><div class="progress-bar" id="progress-bar"></div></div>
 
 <button class="btn-all" id="btn-all" onclick="scrapeAll()">Iniciar Scraping (20 lojas)</button>
+<button class="btn-all" style="background:linear-gradient(135deg,#3b82f6,#6366f1);font-size:.85rem;padding:10px;margin-bottom:8px" onclick="runDiag()">Diagnóstico do Sistema</button>
+<div id="diag-result" style="display:none;background:#1e293b;border:1px solid #334155;border-radius:10px;padding:12px;margin-bottom:14px;font-family:monospace;font-size:.7rem;white-space:pre-wrap;color:#94a3b8;max-height:200px;overflow-y:auto"></div>
 
 <div class="store-list" id="store-list">Carregando...</div>
 
@@ -219,6 +221,25 @@ function setRefresh(secs){
 refresh();
 setRefresh(10);
 log('Setup carregado, monitorando...','ok');
+
+async function runDiag(){
+  log('Executando diagnóstico...','info');
+  const el=document.getElementById('diag-result');
+  el.style.display='block';el.textContent='Verificando...';
+  try{
+    const r=await fetch(A+'/diagnostics');
+    const d=await r.json();
+    el.textContent=JSON.stringify(d,null,2);
+    if(d.chromium_launch==='OK') log('Chromium: OK v'+d.chromium_version,'ok');
+    else log('Chromium: FALHOU - '+d.chromium_error,'err');
+    if(d.database==='OK') log('Banco: OK ('+d.db_stores+' lojas)','ok');
+    else log('Banco: FALHOU - '+d.db_error,'err');
+    log('Playwright: '+d.playwright,'info');
+  }catch(e){
+    el.textContent='Erro: '+e.message;
+    log('Diagnóstico falhou: '+e.message,'err');
+  }
+}
 </script>
 </body>
 </html>
