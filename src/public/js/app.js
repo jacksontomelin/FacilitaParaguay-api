@@ -107,14 +107,35 @@ document.addEventListener('click',e=>{if(!e.target.closest('.search-wrap'))acD.c
 
 // === HOME ===
 async function loadHome(){
-  showSO('Buscando ofertas...');
-  const[d,t]=await Promise.all([api('/deals'),api('/trending')]);hideSO();
-  document.getElementById('splash')?.classList.add('out');setTimeout(()=>document.getElementById('splash')?.remove(),600);
-  hScroll('h-disc',d.biggest_discount||[]);hScroll('h-new',d.new_arrival||[]);hScroll('h-drops',d.price_drop||[]);hScroll('h-trend',t||[]);
-  // Ticker
-  const all=[...(d.biggest_discount||[]),...(d.price_drop||[])].filter(x=>x.discount_percent>5);
-  if(all.length){const it=all.map(x=>`<span class="ticker-item"><span class="ticker-badge">${icon('percent',10)} -${x.discount_percent}%</span> ${esc(x.name?.substring(0,40))} <strong>US$ ${parseFloat(x.price_usd).toFixed(2)}</strong></span>`).join('');
-    document.getElementById('ticker').innerHTML=`<div class="ticker-inner">${it}${it}</div>`;}
+  // Splash some rápido independente dos dados
+  const sp=document.getElementById('splash');
+  setTimeout(()=>{if(sp){sp.classList.add('out');setTimeout(()=>sp.remove(),600);}},1500);
+
+  try {
+    const[d,t]=await Promise.all([api('/deals'),api('/trending')]);
+    if(sp){sp.classList.add('out');setTimeout(()=>sp.remove(),600);}
+
+    const hasData = (d.biggest_discount?.length||0)+(d.new_arrival?.length||0)+(t?.length||0) > 0;
+
+    if(!hasData){
+      // Estado vazio - banco sem dados ainda
+      document.getElementById('ticker').innerHTML='';
+      document.getElementById('page-home').innerHTML=emptyState();
+      document.getElementById('h-new').innerHTML='';
+      document.getElementById('h-drops').innerHTML='';
+      document.getElementById('h-trend').innerHTML='';
+      return;
+    }
+
+    hScroll('h-disc',d.biggest_discount||[]);hScroll('h-new',d.new_arrival||[]);hScroll('h-drops',d.price_drop||[]);hScroll('h-trend',t||[]);
+    const all=[...(d.biggest_discount||[]),...(d.price_drop||[])].filter(x=>x.discount_percent>5);
+    if(all.length){const it=all.map(x=>`<span class="ticker-item"><span class="ticker-badge">${icon('percent',10)} -${x.discount_percent}%</span> ${esc(x.name?.substring(0,40))} <strong>US$ ${parseFloat(x.price_usd).toFixed(2)}</strong></span>`).join('');
+      document.getElementById('ticker').innerHTML=`<div class="ticker-inner">${it}${it}</div>`;}
+  } catch(e) {
+    if(sp){sp.classList.add('out');setTimeout(()=>sp.remove(),600);}
+    document.getElementById('page-home').innerHTML=emptyState();
+  }
+
   // Chips
   document.getElementById('cat-chips').innerHTML=[
     {l:'Descontos',c:'chip-fire',q:'discount'},{l:'Novidades',c:'chip-new',q:'newest'},
@@ -125,9 +146,36 @@ async function loadHome(){
   const rv=RV.g();if(rv.length){document.getElementById('rv-sec').classList.remove('hidden');
     hScroll('h-recent',rv.map(r=>({...r,price_usd:r.price,image_url:r.image,store_name:r.store})));}
   // Populate selects
-  const stores=await api('/stores');const o='<option value="">Loja</option>'+stores.map(s=>`<option value="${s.slug}">${s.name}</option>`).join('');
-  ['f-store','ex-store'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=o;});
-  const br=await api('/brands');document.getElementById('f-brand').innerHTML='<option value="">Marca</option>'+br.slice(0,50).map(b=>`<option value="${b.brand}">${b.brand}</option>`).join('');
+  try {
+    const stores=await api('/stores');const o='<option value="">Loja</option>'+stores.map(s=>`<option value="${s.slug}">${s.name}</option>`).join('');
+    ['f-store','ex-store'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=o;});
+    const br=await api('/brands');document.getElementById('f-brand').innerHTML='<option value="">Marca</option>'+br.slice(0,50).map(b=>`<option value="${b.brand}">${b.brand}</option>`).join('');
+  } catch(_){}
+}
+
+function emptyState(){
+  return `<div class="empty-state">
+    <div class="es-icon">${icon('box',48)}</div>
+    <h3>Nenhum produto ainda</h3>
+    <p>O banco está vazio. Inicie o scraping pra popular com produtos das 20 lojas.</p>
+    <button class="btn-scrape-all" onclick="startScrapeAll()">
+      ${icon('refresh',16)} Iniciar Scraping
+    </button>
+    <div class="es-stores">20 lojas configuradas e prontas</div>
+  </div>`;
+}
+
+async function startScrapeAll(){
+  showSO('Iniciando scraping de 20 lojas...');
+  try {
+    const r = await fetch(A+'/scrape/all',{method:'POST'});
+    const d = await r.json();
+    hideSO();
+    toast(d.message || 'Scraping iniciado em background');
+  } catch(e) {
+    hideSO();
+    toast('Erro ao iniciar scraping');
+  }
 }
 function hScroll(id,items){const el=document.getElementById(id);if(!el)return;el.innerHTML=items.map(p=>card(p)).join('')||'<p class="empty" style="min-width:160px">Sem dados</p>';}
 
