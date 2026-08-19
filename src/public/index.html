@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>FacilitaParaguay</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="icon" href="/img/logo.png">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+</head>
+<body>
+
+  <!-- Splash -->
+  <div id="splash" class="splash">
+    <div class="splash-inner">
+      <div class="splash-lupa">
+        <svg viewBox="0 0 120 120" width="90" height="90">
+          <defs><clipPath id="sl"><circle cx="48" cy="48" r="34"/></clipPath></defs>
+          <g class="lupa-spin"><circle cx="48" cy="48" r="38" fill="none" stroke="#1a3d7c" stroke-width="6"/><circle cx="48" cy="48" r="38" fill="none" stroke="#2d7ff9" stroke-width="3" stroke-dasharray="60 180" stroke-linecap="round" class="lupa-arc"/><line x1="74" y1="74" x2="100" y2="100" stroke="#1a3d7c" stroke-width="8" stroke-linecap="round"/><line x1="76" y1="76" x2="98" y2="98" stroke="#2d5ca6" stroke-width="5" stroke-linecap="round"/></g>
+          <g clip-path="url(#sl)"><rect x="14" y="14" width="68" height="23" fill="#d32f2f"/><rect x="14" y="37" width="68" height="22" fill="#fff"/><rect x="14" y="59" width="68" height="23" fill="#1565c0"/><circle cx="48" cy="48" r="8" fill="none" stroke="#2e7d32" stroke-width="1.5"/><circle cx="48" cy="48" r="4" fill="#f9a825"/></g>
+        </svg>
+      </div>
+      <img src="/img/logo.png" alt="FacilitaParaguay" class="splash-logo">
+    </div>
+  </div>
+
+  <!-- Search overlay -->
+  <div id="search-overlay" class="search-overlay hidden">
+    <div class="so-inner">
+      <svg viewBox="0 0 120 120" width="70" height="70"><defs><clipPath id="sl2"><circle cx="48" cy="48" r="34"/></clipPath></defs><g class="lupa-spin"><circle cx="48" cy="48" r="38" fill="none" stroke="#1a3d7c" stroke-width="6"/><circle cx="48" cy="48" r="38" fill="none" stroke="#2d7ff9" stroke-width="3" stroke-dasharray="60 180" stroke-linecap="round" class="lupa-arc"/><line x1="74" y1="74" x2="100" y2="100" stroke="#1a3d7c" stroke-width="8" stroke-linecap="round"/><line x1="76" y1="76" x2="98" y2="98" stroke="#2d5ca6" stroke-width="5" stroke-linecap="round"/></g><g clip-path="url(#sl2)"><rect x="14" y="14" width="68" height="23" fill="#d32f2f"/><rect x="14" y="37" width="68" height="22" fill="#fff"/><rect x="14" y="59" width="68" height="23" fill="#1565c0"/><circle cx="48" cy="48" r="8" fill="none" stroke="#2e7d32" stroke-width="1.5"/><circle cx="48" cy="48" r="4" fill="#f9a825"/></g></svg>
+      <div class="so-text">Buscando...</div>
+    </div>
+  </div>
+
+  <!-- App wrapper -->
+  <div class="app">
+    <!-- Top bar -->
+    <div class="topbar">
+      <img src="/img/logo.png" alt="FacilitaParaguay" class="topbar-logo">
+      <div class="topbar-actions">
+        <button id="dark-toggle" class="topbar-btn"></button>
+        <button id="wish-toggle" class="topbar-btn"><span id="w-ico"></span><span class="badge-count" id="w-cnt">0</span></button>
+      </div>
+    </div>
+
+    <!-- Search -->
+    <div class="search-wrap">
+      <div class="search-box">
+        <span class="sb-icon" id="sb-ico"></span>
+        <input type="text" id="global-search" placeholder="O que você procura?" autocomplete="off">
+      </div>
+      <div id="ac-drop" class="ac-drop hidden"></div>
+    </div>
+
+    <!-- Page content -->
+    <div class="page-content" id="page-content">
+
+      <!-- HOME -->
+      <div class="page active" id="page-home">
+        <div class="ticker" id="ticker"></div>
+        <div class="cat-chips" id="cat-chips"></div>
+        <div class="section"><div class="s-head"><span class="s-ico" id="s1"></span><span class="s-title">Maiores Descontos</span></div><div class="h-scroll" id="h-disc"></div></div>
+        <div class="section"><div class="s-head"><span class="s-ico" id="s2"></span><span class="s-title">Novidades</span></div><div class="h-scroll" id="h-new"></div></div>
+        <div class="section"><div class="s-head"><span class="s-ico" id="s3"></span><span class="s-title">Preço Caiu</span></div><div class="h-scroll" id="h-drops"></div></div>
+        <div class="section"><div class="s-head"><span class="s-ico" id="s4"></span><span class="s-title">Em Alta</span></div><div class="h-scroll" id="h-trend"></div></div>
+        <div class="section hidden" id="rv-sec"><div class="s-head"><span class="s-ico" id="s5"></span><span class="s-title">Vistos</span></div><div class="h-scroll" id="h-recent"></div></div>
+      </div>
+
+      <!-- SEARCH/PRODUCTS -->
+      <div class="page" id="page-search">
+        <div class="pill-filters">
+          <select id="f-store"><option value="">Loja</option></select>
+          <select id="f-brand"><option value="">Marca</option></select>
+          <select id="f-sort"><option value="updated">Recente</option><option value="price_asc">Menor $</option><option value="price_desc">Maior $</option><option value="discount">Desconto</option></select>
+          <button id="f-stock" class="pill">Em estoque</button>
+        </div>
+        <div class="grid" id="p-grid"></div>
+        <div id="p-loader" class="p-loader hidden">Carregando...</div>
+      </div>
+
+      <!-- PROMOS -->
+      <div class="page" id="page-promos">
+        <div class="promo-cards" id="promo-cards"></div>
+        <div class="grid" id="promo-grid"></div>
+      </div>
+
+      <!-- COMPARE -->
+      <div class="page" id="page-compare">
+        <div class="compare-box">
+          <input type="text" id="cmp-input" placeholder="Nome do produto...">
+          <button class="btn-cmp" id="cmp-btn">Comparar</button>
+        </div>
+        <div id="cmp-results"></div>
+      </div>
+
+      <!-- MORE -->
+      <div class="page" id="page-more">
+        <div class="more-menu">
+          <button class="more-item" onclick="switchPage('alerts')"><span id="m1"></span>Alertas de Preço</button>
+          <button class="more-item" onclick="switchPage('compare')"><span id="m6"></span>Comparar Preços</button>
+          <button class="more-item" onclick="switchPage('calc')"><span id="m2"></span>Calculadora</button>
+          <button class="more-item" onclick="switchPage('wishlist')"><span id="m3"></span>Favoritos</button>
+          <button class="more-item" onclick="switchPage('dash')"><span id="m4"></span>Dashboard</button>
+          <button class="more-item" onclick="switchPage('export')"><span id="m5"></span>Exportar</button>
+        </div>
+      </div>
+
+      <!-- SUB PAGES -->
+      <div class="page" id="page-ponte">
+        <div class="cotacao-bar" id="cotacao-bar"></div>
+        <div class="cam-grid" id="cam-grid"></div>
+        <div class="ponte-links">
+          <a href="https://t.me/agentecdeaovivo_bot" target="_blank" class="ponte-link tg-link"><span id="tg-ico"></span> Alertas Telegram</a>
+          <a href="https://cdeaovivo.com/" target="_blank" class="ponte-link cde-link"><span id="cde-ico"></span> CDE ao Vivo</a>
+        </div>
+      </div>
+      <div class="page" id="page-alerts"><div class="sub-filters"><select id="a-hrs"><option value="24">24h</option><option value="72">3 dias</option><option value="168">7 dias</option></select><input type="number" id="a-min" value="5" placeholder="%"></div><div class="grid" id="a-grid"></div></div>
+      <div class="page" id="page-calc"><div class="calc-card"><h3>Calculadora de Importação</h3><div class="c-grid"><div class="c-f"><label>US$</label><input type="number" id="c-price" placeholder="0.00" step="0.01"></div><div class="c-f"><label>Câmbio R$</label><input type="number" id="c-dolar" value="5.30" step="0.01"></div><div class="c-f"><label>Qtd</label><input type="number" id="c-qty" value="1" min="1"></div><div class="c-f"><label>IOF %</label><input type="number" id="c-iof" value="3.38" step="0.01"></div></div><button class="btn-calc" onclick="calcular()">Calcular</button><div id="c-res" class="c-res hidden"></div></div></div>
+      <div class="page" id="page-wishlist"><div class="grid" id="wl-grid"></div><p id="wl-empty" class="empty">Toque no coração pra salvar produtos</p></div>
+      <div class="page" id="page-dash"><div class="stats-row" id="stats-row"></div><div class="grid" id="stores-list"></div><div id="health"></div></div>
+      <div class="page" id="page-export"><div class="export-card"><h3>Exportar</h3><select id="ex-store"><option value="">Todas</option></select><select id="ex-fmt"><option value="csv">CSV</option><option value="json">JSON</option></select><label class="ck"><input type="checkbox" id="ex-promo">Só promos</label><button class="btn-calc" id="ex-btn">Baixar</button></div></div>
+    </div>
+
+    <!-- Bottom nav -->
+    <nav class="bottom-nav">
+      <button class="bnav active" data-page="home"><span id="bn1"></span><span>Ofertas</span></button>
+      <button class="bnav" data-page="search"><span id="bn2"></span><span>Buscar</span></button>
+      <button class="bnav" data-page="ponte"><span id="bn6"></span><span>Ponte</span></button>
+      <button class="bnav" data-page="promos"><span id="bn3"></span><span>Promos</span></button>
+      <button class="bnav" data-page="more"><span id="bn5"></span><span>Mais</span></button>
+    </nav>
+  </div>
+
+  <!-- Product modal (bottom sheet) -->
+  <div id="modal" class="modal-sheet hidden">
+    <div class="modal-sheet-bg"></div>
+    <div class="modal-sheet-content" id="modal-content">
+      <div class="modal-handle"></div>
+      <div id="modal-body"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"><span></span></div>
+
+  <script src="/js/icons.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>

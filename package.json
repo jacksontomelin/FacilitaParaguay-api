@@ -1,0 +1,23 @@
+{
+  "name": "compras-paraguai",
+  "version": "1.0.0",
+  "description": "Scraper multi-loja para monitoramento de preços do Paraguai",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "scrape": "node -e \"require(\"dotenv\").config(); const {createScraper}=require(\"./src/scrapers\"); const s=createScraper(process.argv[1]); s.run()\" --",
+    "scrape:all": "node -e \"require(\"dotenv\").config(); const {createScraper,getAvailableScrapers}=require(\"./src/scrapers\"); (async()=>{for(const s of getAvailableScrapers()){try{await createScraper(s).run()}catch(e){console.error(e.message)}}})()\""
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cheerio": "^1.2.0",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "node-cron": "^4.6.0",
+    "pg": "^8.23.0",
+    "playwright": "^1.62.1"
+  }
+}
