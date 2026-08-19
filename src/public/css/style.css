@@ -9,8 +9,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro','Segoe UI',sans-serif
 /* === SPLASH === */
 .splash{position:fixed;inset:0;background:linear-gradient(150deg,#0a1628,#162544);z-index:9999;display:flex;align-items:center;justify-content:center;transition:opacity .5s;}
 .splash.out{opacity:0;pointer-events:none;}
-.splash-inner{text-align:center;display:flex;flex-direction:column;align-items:center;gap:16px;}
-.splash-logo{height:32px;width:auto;opacity:.95;}
+.splash-inner{text-align:center;display:flex;flex-direction:column;align-items:center;gap:12px;}
+.splash-logo{height:48px;width:auto;}
+.splash-name{font-size:1.3rem;font-weight:800;letter-spacing:-.3px;}
 .splash-text{color:#5b7ea5;font-size:.78rem;font-weight:500;animation:pulse 1.5s ease-in-out infinite;}
 .lupa-spin{transform-origin:48px 48px;animation:ls 2.2s ease-in-out infinite;}
 .lupa-arc{animation:ld 2.2s ease-in-out infinite;}
@@ -28,8 +29,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro','Segoe UI',sans-serif
 @media(min-width:481px){.app{border-left:1px solid var(--border);border-right:1px solid var(--border);box-shadow:0 0 40px rgba(0,0,0,.08);}}
 
 /* Topbar */
-.topbar{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:var(--card);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:50;}
-.topbar-logo{height:30px;}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:var(--card);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:50;}
+.topbar-brand{display:flex;align-items:center;gap:8px;}
+.topbar-icon{height:32px;width:auto;}
+.topbar-name{display:flex;align-items:baseline;font-size:1.05rem;font-weight:800;letter-spacing:-.3px;line-height:1;}
+.tn-facilita{color:#1a3d7c;}
+.tn-py{color:#c62828;}
+[data-theme="dark"] .tn-facilita{color:#5b9bff;}
+[data-theme="dark"] .tn-py{color:#ef5350;}
 .topbar-actions{display:flex;gap:6px;}
 .topbar-btn{background:var(--bg);border:1px solid var(--border);color:var(--text);width:36px;height:36px;border-radius:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;position:relative;}
 .badge-count{position:absolute;top:-4px;right:-4px;background:var(--red);color:#fff;font-size:.6rem;width:16px;height:16px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;}
