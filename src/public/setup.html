@@ -32,6 +32,8 @@ h1{font-size:1.2rem;margin-bottom:4px;display:flex;align-items:center;gap:8px;}
 .s-error{background:#ef4444;color:#fff;}
 .store .s-btn{background:#3b82f6;color:#fff;border:none;padding:6px 12px;border-radius:8px;font-size:.72rem;font-weight:600;cursor:pointer;}
 .store .s-btn:disabled{opacity:.4;}
+.store-logs{font-size:.6rem;color:#64748b;font-family:monospace;margin-top:4px;max-height:50px;overflow:hidden;}
+.store-logs div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .log-section{margin-top:14px;}
 .log-title{font-size:.85rem;font-weight:600;margin-bottom:8px;color:#94a3b8;}
 .log{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:10px;max-height:300px;overflow-y:auto;font-family:monospace;font-size:.7rem;line-height:1.6;color:#94a3b8;}
@@ -80,7 +82,6 @@ h1{font-size:1.2rem;margin-bottom:4px;display:flex;align-items:center;gap:8px;}
 <script>
 const A='/api';
 let refreshTimer=null;
-let runningStores=new Set();
 
 function log(msg,cls='info'){
   const el=document.getElementById('log');
@@ -91,30 +92,60 @@ function log(msg,cls='info'){
 
 async function refresh(){
   try{
-    const[health,stores]=await Promise.all([
+    const[health,stores,scrapeStatus]=await Promise.all([
       fetch(A+'/health').then(r=>r.json()),
-      fetch(A+'/stores').then(r=>r.json())
+      fetch(A+'/stores').then(r=>r.json()),
+      fetch(A+'/scrape/status').then(r=>r.json()).catch(()=>({running:[],running_count:0,history:[]}))
     ]);
 
     document.getElementById('st-prods').textContent=health.total_products||0;
     document.getElementById('st-stores').textContent=health.total_stores||0;
-    document.getElementById('st-status').textContent=health.status||'?';
-    document.getElementById('st-status').style.color=health.status==='healthy'?'#10b981':'#f59e0b';
+
+    const runCount = scrapeStatus.running_count||0;
+    if(runCount>0){
+      document.getElementById('st-status').textContent=runCount+' rodando';
+      document.getElementById('st-status').style.color='#f59e0b';
+    } else {
+      document.getElementById('st-status').textContent=health.status||'?';
+      document.getElementById('st-status').style.color=health.status==='healthy'?'#10b981':'#f59e0b';
+    }
+
+    // Mapear scrapers rodando
+    const runningMap={};
+    (scrapeStatus.running||[]).forEach(r=>{runningMap[r.slug]=r;});
+
+    // Últimos finalizados
+    const histMap={};
+    (scrapeStatus.history||[]).forEach(h=>{if(!histMap[h.slug])histMap[h.slug]=h;});
 
     const list=document.getElementById('store-list');
     list.innerHTML=stores.map(s=>{
       const count=parseInt(s.product_count||0);
       const promo=parseInt(s.promo_count||0);
-      const isRunning=runningStores.has(s.slug);
+      const isRunning=!!runningMap[s.slug];
+      const lastRun=histMap[s.slug];
       const cls=isRunning?'running':count>0?'done':'';
-      const statusCls=isRunning?'s-running':count>0?'s-done':'s-idle';
-      const statusText=isRunning?'Rodando...':count>0?`${count} produtos`:'Vazio';
+      let statusText,statusCls;
+      if(isRunning){
+        const r=runningMap[s.slug];
+        statusText=r.products_found?r.products_found+' encontrados':'Rodando...';
+        statusCls='s-running';
+      }else if(lastRun&&lastRun.status==='error'){
+        statusText='Erro';statusCls='s-error';
+      }else if(count>0){
+        statusText=count+' produtos';statusCls='s-done';
+      }else{
+        statusText='Vazio';statusCls='s-idle';
+      }
+      const logsHtml=isRunning&&runningMap[s.slug].logs?
+        `<div class="store-logs">${runningMap[s.slug].logs.slice(-3).map(l=>'<div>'+l+'</div>').join('')}</div>`:'';
       return `<div class="store ${cls}">
-        <div>
+        <div style="flex:1;min-width:0">
           <div class="s-name">${s.name}</div>
           <div class="s-count ${count>0?'has':''}">${count} produtos ${promo>0?'('+promo+' promos)':''}</div>
+          ${logsHtml}
         </div>
-        <div style="display:flex;align-items:center;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
           <span class="s-status ${statusCls}">${statusText}</span>
           <button class="s-btn" onclick="scrapeOne('${s.slug}')" ${isRunning?'disabled':''}>Scrape</button>
         </div>
@@ -124,6 +155,20 @@ async function refresh(){
     // Progress bar
     const withData=stores.filter(s=>parseInt(s.product_count||0)>0).length;
     document.getElementById('progress-bar').style.width=(withData/stores.length*100)+'%';
+
+    // Btn all
+    const btn=document.getElementById('btn-all');
+    if(runCount>0){btn.disabled=true;btn.textContent=runCount+' scrapers rodando...';}
+    else{btn.disabled=false;btn.textContent='Iniciar Scraping (20 lojas)';}
+
+    // Auto-log de atividade dos que terminaram
+    (scrapeStatus.history||[]).slice(0,3).forEach(h=>{
+      const key='hist-'+h.slug+'-'+h.finished_at;
+      if(!document.querySelector(`[data-key="${key}"]`)){
+        const cls=h.status==='success'?'ok':'err';
+        log(`${h.slug}: ${h.status} (${h.products_found||0} produtos, ${((h.duration_ms||0)/1000).toFixed(0)}s)`,cls);
+      }
+    });
 
     document.getElementById('last-update').textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR');
   }catch(e){
@@ -135,39 +180,29 @@ async function refresh(){
 
 async function scrapeOne(slug){
   log(`Iniciando scrape: ${slug}`,'info');
-  runningStores.add(slug);
-  refresh();
   try{
     const r=await fetch(A+'/scrape/'+slug,{method:'POST'});
     const d=await r.json();
     log(`${slug}: ${d.message}`,'ok');
+    setTimeout(refresh,1000);
   }catch(e){
     log(`${slug}: Erro - ${e.message}`,'err');
   }
-  // O scrape roda em background, remover após 2 min (estimativa)
-  setTimeout(()=>{runningStores.delete(slug);refresh();},120000);
 }
 
 async function scrapeAll(){
   const btn=document.getElementById('btn-all');
-  btn.disabled=true;btn.textContent='Scraping em andamento...';
+  btn.disabled=true;btn.textContent='Iniciando...';
   log('Iniciando scraping de TODAS as 20 lojas','warn');
-
   try{
     const r=await fetch(A+'/scrape/all',{method:'POST'});
     const d=await r.json();
     log(`Resposta: ${d.message}`,'ok');
-    if(d.stores)d.stores.forEach(s=>runningStores.add(s));
-    refresh();
+    setTimeout(refresh,2000);
   }catch(e){
     log('Erro ao iniciar scraping: '+e.message,'err');
-  }
-
-  // Re-enable after 10 min
-  setTimeout(()=>{
     btn.disabled=false;btn.textContent='Iniciar Scraping (20 lojas)';
-    runningStores.clear();refresh();
-  },600000);
+  }
 }
 
 function setRefresh(secs){

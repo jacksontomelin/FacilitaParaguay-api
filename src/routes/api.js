@@ -3,6 +3,7 @@ const router = express.Router();
 const { pool } = require('../database');
 const { createScraper, getAvailableScrapers } = require('../scrapers');
 const cache = require('../cache');
+const tracker = require('../scrapeTracker');
 
 // Middleware de cache
 function cached(keyFn, ttl = 60000) {
@@ -399,16 +400,77 @@ router.get('/scrape/logs', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// GET /api/scrape/status - Estado atual dos scrapers (em memória)
+router.get('/scrape/status', (req, res) => {
+  res.json(tracker.getStatus());
+});
+
+// GET /api/scrape/status/:store - Logs de um scraper específico
+router.get('/scrape/status/:store', (req, res) => {
+  res.json({ slug: req.params.store, logs: tracker.getLogs(req.params.store) });
+});
+
+// Função helper pra rodar scraper com tracking
+async function runScraperTracked(slug) {
+  if (tracker.isRunning(slug)) return;
+  tracker.start(slug);
+  try {
+    tracker.log(slug, 'Criando scraper...');
+    const scraper = createScraper(slug);
+    tracker.log(slug, 'Scraper criado, iniciando...');
+
+    // Interceptar console.log do scraper
+    const origLog = console.log;
+    const origErr = console.error;
+    const logInterceptor = (...args) => {
+      const msg = args.join(' ');
+      if (msg.includes(slug) || msg.includes(scraper.storeSlug)) {
+        tracker.log(slug, msg.replace(/\[.*?\]\s*/, ''));
+        // Extrair contagem de produtos
+        const m = msg.match(/(\d+)\s*produtos?/i);
+        if (m) tracker.update(slug, { products_found: parseInt(m[1]) });
+      }
+      origLog.apply(console, args);
+    };
+    const errInterceptor = (...args) => {
+      const msg = args.join(' ');
+      if (msg.includes(slug) || msg.includes(scraper.storeSlug)) {
+        tracker.log(slug, 'ERRO: ' + msg.replace(/\[.*?\]\s*/, ''));
+        tracker.update(slug, { errors: (tracker.running[slug]?.errors || 0) + 1 });
+      }
+      origErr.apply(console, args);
+    };
+    console.log = logInterceptor;
+    console.error = errInterceptor;
+
+    await scraper.run();
+
+    console.log = origLog;
+    console.error = origErr;
+    tracker.finish(slug, 'success', { products_found: scraper.stats?.found || 0 });
+  } catch (err) {
+    tracker.log(slug, 'CRASH: ' + err.message);
+    tracker.finish(slug, 'error', { error: err.message });
+  }
+}
+
 router.post('/scrape/:store', async (req, res) => {
   const { store } = req.params;
   const available = getAvailableScrapers();
 
   if (store === 'all') {
-    res.json({ message: `Scraping ${available.length} lojas em background`, stores: available });
-    for (const s of available) {
-      try { const scraper = createScraper(s); scraper.run().catch(console.error); }
-      catch (e) { console.error(`Erro ${s}: ${e.message}`); }
+    const alreadyRunning = available.filter(s => tracker.isRunning(s));
+    if (alreadyRunning.length > 5) {
+      return res.json({ message: `${alreadyRunning.length} scrapers já rodando, aguarde`, running: alreadyRunning });
     }
+    const toRun = available.filter(s => !tracker.isRunning(s));
+    res.json({ message: `Iniciando ${toRun.length} scrapers em sequência`, stores: toRun });
+    // Rodar em sequência pra não sobrecarregar
+    (async () => {
+      for (const s of toRun) {
+        await runScraperTracked(s);
+      }
+    })();
     return;
   }
 
@@ -416,11 +478,12 @@ router.post('/scrape/:store', async (req, res) => {
     return res.status(404).json({ error: `Loja não encontrada. Disponíveis: ${available.join(', ')}` });
   }
 
-  try {
-    const scraper = createScraper(store);
-    res.json({ message: `Scraping ${store} iniciado em background` });
-    scraper.run().catch(console.error);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  if (tracker.isRunning(store)) {
+    return res.json({ message: `${store} já está rodando`, logs: tracker.getLogs(store) });
+  }
+
+  res.json({ message: `Scraping ${store} iniciado` });
+  runScraperTracked(store);
 });
 
 module.exports = router;
