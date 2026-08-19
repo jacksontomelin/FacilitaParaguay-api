@@ -276,4 +276,8 @@ document.querySelector('.modal-sheet-bg')?.addEventListener('click',()=>document
 document.querySelector('.modal-handle')?.addEventListener('click',()=>document.getElementById('modal').classList.add('hidden'));
 
 function esc(s){if(!s)return'';const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+
+// Splash fallback: some em 8s mesmo se API falhar
+setTimeout(()=>{const sp=document.getElementById('splash');if(sp){sp.classList.add('out');setTimeout(()=>sp.remove(),600);}},8000);
+
 loadHome();

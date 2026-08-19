@@ -9,8 +9,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro','Segoe UI',sans-serif
 /* === SPLASH === */
 .splash{position:fixed;inset:0;background:linear-gradient(150deg,#0a1628,#162544);z-index:9999;display:flex;align-items:center;justify-content:center;transition:opacity .5s;}
 .splash.out{opacity:0;pointer-events:none;}
-.splash-inner{text-align:center;}
-.splash-logo{height:40px;margin-top:20px;opacity:.9;}
+.splash-inner{text-align:center;display:flex;flex-direction:column;align-items:center;gap:16px;}
+.splash-logo{height:32px;width:auto;opacity:.95;}
+.splash-text{color:#5b7ea5;font-size:.78rem;font-weight:500;animation:pulse 1.5s ease-in-out infinite;}
 .lupa-spin{transform-origin:48px 48px;animation:ls 2.2s ease-in-out infinite;}
 .lupa-arc{animation:ld 2.2s ease-in-out infinite;}
 @keyframes ls{0%{transform:rotate(0)}50%{transform:rotate(200deg)}100%{transform:rotate(360deg)}}
