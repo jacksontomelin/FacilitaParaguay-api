@@ -816,7 +816,19 @@ router.get('/diagnostics', async (req, res) => {
     DATABASE_URL: process.env.DATABASE_URL ? 'set (hidden)' : 'NOT SET',
     CHROMIUM_PATH: process.env.CHROMIUM_PATH || 'not set',
     PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH || 'not set',
+    FLARESOLVERR_URL: process.env.FLARESOLVERR_URL || 'not set',
   };
+
+  // Verificar FlareSolverr
+  try {
+    const { testConnection } = require('../flaresolverr');
+    const fs = await testConnection();
+    diag.flaresolverr = fs.ok ? 'OK' : 'OFFLINE';
+    if (fs.error) diag.flaresolverr_error = fs.error;
+  } catch (e) {
+    diag.flaresolverr = 'NOT_CONFIGURED';
+    diag.flaresolverr_error = e.message;
+  }
 
   res.json(diag);
 });

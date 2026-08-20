@@ -4,6 +4,7 @@ const NisseiScraper = require('./NisseiScraper');
 const CellShopScraper = require('./CellShopScraper');
 const MagentoGraphQLScraper = require('./MagentoGraphQLScraper');
 const CloudflareBlockedScraper = require('./CloudflareBlockedScraper');
+const FlareSolverrScraper = require('./FlareSolverrScraper');
 const MegaScraper = require('./MegaScraper');
 const CasaBoScraper = require('./CasaBoScraper');
 const MobileZoneScraper = require('./MobileZoneScraper');
@@ -24,11 +25,13 @@ const IntershopScraper = require('./IntershopScraper');
 const STORE_CONFIGS = {
   'shopping-china':       { Class: ShoppingChinaScraper },
   'newzone':              { Class: NewZoneScraper },
-  'nissei':               { Class: CloudflareBlockedScraper, config: {
-    baseUrl: 'https://nissei.com', reason: 'Cloudflare challenge em todos endpoints (HTML + GraphQL). Requer FlareSolverr.',
+  'nissei':               { Class: FlareSolverrScraper, config: {
+    baseUrl: 'https://nissei.com', gqlUrl: 'https://nissei.com/graphql', storeCode: 'br', useGraphQL: true,
+    searchTerms: ['iphone','samsung','xiaomi','macbook','playstation','nintendo','jbl','sony','garmin','gopro','dji','notebook','air fryer','perfume','whisky','smart tv','airpods'],
   }},
-  'cellshop':             { Class: CloudflareBlockedScraper, config: {
-    baseUrl: 'https://cellshop.com', reason: 'Cloudflare challenge em todos endpoints (HTML + GraphQL). Requer FlareSolverr.',
+  'cellshop':             { Class: FlareSolverrScraper, config: {
+    baseUrl: 'https://cellshop.com', gqlUrl: 'https://cellshop.com/graphql', storeCode: 'default', useGraphQL: true,
+    searchTerms: ['iphone','samsung','xiaomi','macbook','playstation','nintendo','jbl','sony','garmin','gopro','notebook','perfume','whisky','ar condicionado','smart tv','airpods','air fryer','drone','smartwatch'],
   }},
   'mega-eletronicos':     { Class: MegaScraper },
   'casa-bo':              { Class: CasaBoScraper },
