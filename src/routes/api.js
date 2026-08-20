@@ -820,3 +820,107 @@ router.get('/diagnostics', async (req, res) => {
 
   res.json(diag);
 });
+
+// GET /api/scrape/test/:store - Testa scraper e retorna o que ele vê
+router.get('/scrape/test/:store', async (req, res) => {
+  const { store } = req.params;
+  const available = getAvailableScrapers();
+  if (!available.includes(store)) return res.status(404).json({ error: 'Loja não encontrada' });
+
+  try {
+    const scraper = createScraper(store);
+    const { chromium } = require('playwright');
+    const launchOpts = { headless: true, args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage','--disable-gpu'] };
+    if (process.env.CHROMIUM_PATH) launchOpts.executablePath = process.env.CHROMIUM_PATH;
+
+    const browser = await chromium.launch(launchOpts);
+    const context = await browser.newContext({ userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' });
+    const page = await context.newPage();
+
+    const testUrl = scraper.baseUrl || scraper.config?.baseUrl || '';
+    const result = { store, url: testUrl, steps: [] };
+
+    // 1. Acessar home
+    result.steps.push({ step: 'goto', url: testUrl, time: new Date().toISOString() });
+    try {
+      await page.goto(testUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      result.steps.push({ step: 'loaded', status: 'ok' });
+    } catch (e) {
+      result.steps.push({ step: 'loaded', status: 'error', error: e.message });
+      await browser.close();
+      return res.json(result);
+    }
+
+    // 2. Esperar conteúdo
+    await page.waitForTimeout(3000);
+
+    // 3. Capturar info da página
+    const pageInfo = await page.evaluate(() => ({
+      title: document.title,
+      url: window.location.href,
+      bodyLength: document.body.innerHTML.length,
+      allLinks: document.querySelectorAll('a[href]').length,
+      allImages: document.querySelectorAll('img').length,
+      productLinks: [...document.querySelectorAll('a[href]')].filter(a =>
+        a.href.match(/\/produc?to\/|product_id=|\/item\/|\.html$/) &&
+        !a.href.includes('/category') && !a.href.includes('/categoria')
+      ).length,
+      priceTexts: [...document.querySelectorAll('*')].filter(el =>
+        el.textContent.match(/U?\$\s*\d/) && el.children.length === 0
+      ).length,
+      sampleLinks: [...document.querySelectorAll('a[href]')].slice(0, 20).map(a => ({
+        href: a.href.substring(0, 120),
+        text: a.textContent.trim().substring(0, 60),
+        hasImg: !!a.querySelector('img'),
+      })),
+      bodySnippet: document.body.innerText.substring(0, 1000),
+    }));
+    result.pageInfo = pageInfo;
+
+    // 4. Tentar primeira categoria se disponível
+    const cats = scraper.categories || scraper.config?.htmlCategories || [];
+    if (cats.length > 0) {
+      const firstCat = cats[0];
+      const catUrl = (scraper.baseUrl || scraper.config?.baseUrl || '') + firstCat.path;
+      result.steps.push({ step: 'category', url: catUrl, name: firstCat.name });
+      try {
+        await page.goto(catUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await page.waitForTimeout(3000);
+        const catInfo = await page.evaluate(() => ({
+          title: document.title,
+          url: window.location.href,
+          bodyLength: document.body.innerHTML.length,
+          links: document.querySelectorAll('a[href]').length,
+          images: document.querySelectorAll('img').length,
+          bodySnippet: document.body.innerText.substring(0, 1500),
+          htmlSnippet: document.body.innerHTML.substring(0, 2000),
+        }));
+        result.categoryInfo = catInfo;
+        result.steps.push({ step: 'category_loaded', status: 'ok', links: catInfo.links, images: catInfo.images });
+      } catch (e) {
+        result.steps.push({ step: 'category_loaded', status: 'error', error: e.message });
+      }
+    }
+
+    // 5. Se tem lista TXT, testar
+    const listUrl = scraper.config?.listUrl;
+    if (listUrl) {
+      result.steps.push({ step: 'txt_list', url: listUrl });
+      try {
+        await page.goto(listUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+        await page.waitForTimeout(2000);
+        const txt = await page.evaluate(() => document.body.innerText);
+        result.txtSample = txt.substring(0, 2000);
+        result.txtLines = txt.split('\n').length;
+        result.steps.push({ step: 'txt_loaded', lines: txt.split('\n').length });
+      } catch (e) {
+        result.steps.push({ step: 'txt_loaded', status: 'error', error: e.message });
+      }
+    }
+
+    await browser.close();
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message, stack: e.stack?.substring(0, 500) });
+  }
+});
