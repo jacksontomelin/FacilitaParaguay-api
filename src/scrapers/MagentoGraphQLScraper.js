@@ -242,8 +242,13 @@ class MagentoGraphQLScraper extends BaseScraper {
 
     // Testar GraphQL
     console.log(`[${this.storeSlug}] Testando GraphQL em ${this.gqlUrl}...`);
-    const test = await this.gqlQuery('{ storeConfig { store_name base_currency_code } }');
-    console.log(`[${this.storeSlug}] Loja: ${test.storeConfig?.store_name}, Moeda: ${test.storeConfig?.base_currency_code}`);
+    try {
+      const test = await this.gqlQuery('{ storeConfig { store_name base_currency_code } }');
+      console.log(`[${this.storeSlug}] GraphQL OK - Loja: ${test.storeConfig?.store_name}, Moeda: ${test.storeConfig?.base_currency_code}`);
+    } catch (e) {
+      console.error(`[${this.storeSlug}] GraphQL FALHOU: ${e.message}`);
+      throw new Error(`GraphQL inacessível em ${this.gqlUrl}: ${e.message}`);
+    }
   }
 
   async createPage() { return null; } // Não usa browser

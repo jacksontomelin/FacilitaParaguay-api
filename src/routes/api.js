@@ -924,3 +924,61 @@ router.get('/scrape/test/:store', async (req, res) => {
     res.status(500).json({ error: e.message, stack: e.stack?.substring(0, 500) });
   }
 });
+
+// GET /api/scrape/test-gql/:store - Testa GraphQL direto
+router.get('/scrape/test-gql/:store', async (req, res) => {
+  const urls = {
+    'nissei': 'https://nissei.com/graphql',
+    'cellshop': 'https://cellshop.com/graphql',
+  };
+  const store = req.params.store;
+  const gqlUrl = urls[store];
+  if (!gqlUrl) return res.json({ error: 'Loja sem GraphQL', available: Object.keys(urls) });
+
+  const result = { store, gqlUrl, steps: [] };
+
+  // 1. Testar storeConfig
+  try {
+    result.steps.push({ step: 'storeConfig', status: 'testing' });
+    const r = await fetch(gqlUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0 Chrome/131' },
+      body: JSON.stringify({ query: '{ storeConfig { store_name base_currency_code default_display_currency_code } }' }),
+    });
+    result.steps[0].httpStatus = r.status;
+    result.steps[0].headers = Object.fromEntries([...r.headers.entries()].slice(0, 10));
+    const text = await r.text();
+    result.steps[0].bodyLength = text.length;
+    result.steps[0].bodySnippet = text.substring(0, 500);
+    try {
+      const json = JSON.parse(text);
+      result.steps[0].parsed = json;
+      result.steps[0].status = json.data ? 'ok' : 'error';
+    } catch (_) {
+      result.steps[0].status = 'not_json';
+    }
+  } catch (e) {
+    result.steps[0].status = 'failed';
+    result.steps[0].error = e.message;
+  }
+
+  // 2. Testar busca de produtos
+  try {
+    result.steps.push({ step: 'products_search', status: 'testing' });
+    const r = await fetch(gqlUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0 Chrome/131' },
+      body: JSON.stringify({ query: '{ products(search: "iphone", pageSize: 3) { total_count items { sku name url_key price_range { minimum_price { final_price { value currency } } } stock_status image { url } } } }' }),
+    });
+    const data = await r.json();
+    result.steps[1].status = data.data?.products ? 'ok' : 'error';
+    result.steps[1].total = data.data?.products?.total_count;
+    result.steps[1].items = data.data?.products?.items?.slice(0, 3);
+    if (data.errors) result.steps[1].errors = data.errors;
+  } catch (e) {
+    result.steps[1].status = 'failed';
+    result.steps[1].error = e.message;
+  }
+
+  res.json(result);
+});
