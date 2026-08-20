@@ -102,15 +102,19 @@ class BaseScraper {
     page.setDefaultTimeout(30000);
     page.setDefaultNavigationTimeout(45000);
 
-    // Wrapper: goto que espera Cloudflare automaticamente
+    // Wrapper seguro: detecta Cloudflare sem quebrar navegação normal
+    const self = this;
     const origGoto = page.goto.bind(page);
-    page.goto = async (url, opts = {}) => {
+    page.goto = async function(url, opts = {}) {
       const response = await origGoto(url, opts);
-      // Checar se caiu no Cloudflare
-      const title = await page.title().catch(() => '');
-      if (title.includes('Just a moment') || title.includes('Checking')) {
-        console.log(`[${this.storeSlug}] Cloudflare detectado, aguardando...`);
-        await this.waitForCloudflare(page, 20000);
+      try {
+        const title = await page.title();
+        if (title && (title.includes('Just a moment') || title.includes('Checking your browser'))) {
+          console.log(`[${self.storeSlug}] Cloudflare detectado em ${url.substring(0, 60)}, aguardando...`);
+          await self.waitForCloudflare(page, 20000);
+        }
+      } catch (_) {
+        // Ignorar erro no check de título - navegação normal continua
       }
       return response;
     };
