@@ -24,9 +24,15 @@ class BaseScraper {
 
   async init() {
     // Adquirir advisory lock
-    this.lockClient = await acquireLock(this.lockId);
-    if (!this.lockClient) {
-      throw new Error(`Scraper já em execução para ${this.storeSlug}`);
+    try {
+      this.lockClient = await acquireLock(this.lockId);
+      if (!this.lockClient) {
+        throw new Error(`Scraper já em execução para ${this.storeSlug}`);
+      }
+    } catch (lockErr) {
+      console.error(`[${this.storeSlug}] Lock falhou: ${lockErr.message}`);
+      // Continuar sem lock se falhar
+      this.lockClient = null;
     }
 
     // Buscar dados da loja
@@ -36,26 +42,79 @@ class BaseScraper {
     }
     this.store = result.rows[0];
 
-    // Iniciar browser
-    this.browser = await chromium.launch({
-      headless: true,
-      executablePath: process.env.CHROMIUM_PATH || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-    });
+    // Iniciar browser com stealth
+    const launchArgs = [
+      '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',
+      '--disable-blink-features=AutomationControlled',
+      '--disable-features=IsolateOrigins,site-per-process',
+      '--disable-gpu', '--disable-infobars',
+    ];
+    const launchOpts = { headless: true, args: launchArgs };
+
+    // Chromium path
+    const chromePath = process.env.CHROMIUM_PATH;
+    if (chromePath && chromePath.length > 5) {
+      launchOpts.executablePath = chromePath;
+    }
+    // Não setar executablePath se não tem CHROMIUM_PATH - Playwright usa o bundled
+
+    this.browser = await chromium.launch(launchOpts);
 
     this.context = await this.browser.newContext({
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
       locale: 'pt-BR',
       viewport: { width: 1920, height: 1080 },
+      javaScriptEnabled: true,
+      ignoreHTTPSErrors: true,
     });
 
-    console.log(`[${this.storeSlug}] Scraper inicializado`);
+    // Stealth: remover sinais de automação
+    await this.context.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => false });
+      Object.defineProperty(navigator, 'languages', { get: () => ['pt-BR', 'pt', 'en-US', 'en'] });
+      Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+      window.chrome = { runtime: {} };
+      const origQuery = window.navigator.permissions.query;
+      window.navigator.permissions.query = (params) =>
+        params.name === 'notifications' ? Promise.resolve({ state: Notification.permission }) : origQuery(params);
+    });
+
+    console.log(`[${this.storeSlug}] Scraper inicializado (stealth mode)`);
+  }
+
+  // Esperar Cloudflare challenge resolver (até 15s)
+  async waitForCloudflare(page, timeout = 15000) {
+    const start = Date.now();
+    while (Date.now() - start < timeout) {
+      const title = await page.title();
+      if (!title.includes('Just a moment') && !title.includes('Checking') && !title.includes('Cloudflare')) {
+        return true;
+      }
+      await this.delay(1000);
+    }
+    const finalTitle = await page.title();
+    console.log(`[${this.storeSlug}] Cloudflare timeout. Título: "${finalTitle}"`);
+    return false;
   }
 
   async createPage() {
     const page = await this.context.newPage();
     page.setDefaultTimeout(30000);
     page.setDefaultNavigationTimeout(45000);
+
+    // Wrapper: goto que espera Cloudflare automaticamente
+    const origGoto = page.goto.bind(page);
+    page.goto = async (url, opts = {}) => {
+      const response = await origGoto(url, opts);
+      // Checar se caiu no Cloudflare
+      const title = await page.title().catch(() => '');
+      if (title.includes('Just a moment') || title.includes('Checking')) {
+        console.log(`[${this.storeSlug}] Cloudflare detectado, aguardando...`);
+        await this.waitForCloudflare(page, 20000);
+      }
+      return response;
+    };
+
     return page;
   }
 
@@ -197,10 +256,13 @@ class BaseScraper {
       await this.logScrape('success', startTime);
       console.log(`[${this.storeSlug}] Concluído: ${this.stats.found} encontrados, ${this.stats.new} novos, ${this.stats.updated} atualizados, ${this.stats.errors} erros`);
     } catch (err) {
-      console.error(`[${this.storeSlug}] ERRO: ${err.message}`);
-      if (this.store) {
-        await this.logScrape('error', startTime, err.message);
-      }
+      console.error(`[${this.storeSlug}] ERRO FATAL: ${err.message}`);
+      console.error(`[${this.storeSlug}] Stack: ${err.stack?.substring(0, 300)}`);
+      try {
+        if (this.store) {
+          await this.logScrape('error', startTime, err.message);
+        }
+      } catch (_) {}
     } finally {
       await this.cleanup();
     }
