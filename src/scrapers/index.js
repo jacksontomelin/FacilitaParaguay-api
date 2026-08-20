@@ -2,6 +2,7 @@ const ShoppingChinaScraper = require('./ShoppingChinaScraper');
 const NewZoneScraper = require('./NewZoneScraper');
 const NisseiScraper = require('./NisseiScraper');
 const CellShopScraper = require('./CellShopScraper');
+const MagentoGraphQLScraper = require('./MagentoGraphQLScraper');
 const MegaScraper = require('./MegaScraper');
 const CasaBoScraper = require('./CasaBoScraper');
 const MobileZoneScraper = require('./MobileZoneScraper');
@@ -22,8 +23,14 @@ const IntershopScraper = require('./IntershopScraper');
 const STORE_CONFIGS = {
   'shopping-china':       { Class: ShoppingChinaScraper },
   'newzone':              { Class: NewZoneScraper },
-  'nissei':               { Class: NisseiScraper },
-  'cellshop':             { Class: CellShopScraper },
+  'nissei':               { Class: MagentoGraphQLScraper, config: {
+    baseUrl: 'https://nissei.com/br', gqlUrl: 'https://nissei.com/graphql', storeCode: 'br',
+    searchTerms: ['iphone','samsung','xiaomi','macbook','playstation','nintendo','jbl','sony','garmin','gopro','dji','notebook','air fryer','perfume','whisky','smart tv','airpods'],
+  }},
+  'cellshop':             { Class: MagentoGraphQLScraper, config: {
+    baseUrl: 'https://cellshop.com', gqlUrl: 'https://cellshop.com/graphql', storeCode: 'default',
+    searchTerms: ['iphone','samsung','xiaomi','macbook','playstation','nintendo','jbl','sony','garmin','gopro','notebook','perfume','whisky','ar condicionado','smart tv','airpods','air fryer','drone','smartwatch'],
+  }},
   'mega-eletronicos':     { Class: MegaScraper },
   'casa-bo':              { Class: CasaBoScraper },
   'mobile-zone':          { Class: MobileZoneScraper },
@@ -45,6 +52,7 @@ const STORE_CONFIGS = {
 function createScraper(storeSlug) {
   const c = STORE_CONFIGS[storeSlug];
   if (!c) throw new Error(`Scraper não configurado: ${storeSlug}`);
+  if (c.config) return new c.Class(storeSlug, c.config);
   return new c.Class();
 }
 
