@@ -1,332 +1,290 @@
 const TelegramBot = require('node-telegram-bot-api');
-const { pool } = require('./database');
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-if (!TOKEN) { console.log('[BOT] TELEGRAM_BOT_TOKEN não configurado, bot desativado'); module.exports = { start: () => {} }; return; }
+if (!TOKEN) { console.log('[BOT] TELEGRAM_BOT_TOKEN não configurado'); module.exports = {}; return; }
 
 const API_BASE = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
 const bot = new TelegramBot(TOKEN, { polling: true });
+console.log('[BOT] Telegram bot FacilitaParaguay iniciado');
 
-console.log('[BOT] Telegram bot iniciado');
+const H = 'HTML'; // parse mode
 
-// ==================== COMANDOS ====================
+// Helper: fetch API
+async function api(path) {
+  const r = await fetch(`${API_BASE}/api${path}`);
+  return r.json();
+}
 
+// Helper: formatar preço
+function $(v) { return v ? `US$ ${parseFloat(v).toFixed(2)}` : 'Consultar'; }
+function R$(v) { return `R$ ${parseFloat(v).toFixed(2)}`; }
+
+// ==================== /start ====================
 bot.onText(/\/start/, (msg) => {
-  bot.sendMessage(msg.chat.id,
-    `🔍 *FacilitaParaguay*\n` +
-    `Busca de Produtos no Paraguai\n\n` +
-    `Comandos disponíveis:\n\n` +
-    `🔎 /buscar _produto_ — Buscar produto\n` +
-    `⚖️ /comparar _produto_ — Comparar preços entre lojas\n` +
-    `🏷️ /promos — Melhores promoções\n` +
-    `📉 /alertas — Produtos que baixaram de preço\n` +
-    `🌉 /ponte — Câmeras e cotação da ponte\n` +
-    `💰 /cotacao — Câmbio USD/BRL/PYG\n` +
-    `🧮 /calcular _valor_ — Calculadora de importação\n` +
-    `📊 /stats — Estatísticas do sistema\n` +
-    `🏪 /lojas — Lista de lojas monitoradas\n\n` +
-    `Ou simplesmente *digite o nome de um produto* que eu busco pra você!`,
-    { parse_mode: 'Markdown' }
-  );
+  bot.sendMessage(msg.chat.id, [
+    `<b>🔍 FacilitaParaguay</b>`,
+    `<i>Busca de Produtos no Paraguai</i>`,
+    ``,
+    `<b>Comandos:</b>`,
+    `🔎 /buscar <i>produto</i> — Buscar nas 20 lojas`,
+    `⚖️ /comparar <i>produto</i> — Menor preço entre lojas`,
+    `🏷️ /promos — Melhores descontos agora`,
+    `📉 /alertas — Preços que caíram hoje`,
+    `🌉 /ponte — Câmeras ao vivo + cotação`,
+    `💱 /cotacao — Câmbio USD/BRL/PYG`,
+    `🧮 /calc <i>valor</i> — Quanto vou pagar no total?`,
+    `📊 /stats — Números do sistema`,
+    `🏪 /lojas — Lojas monitoradas`,
+    ``,
+    `💡 <b>Dica:</b> digite qualquer texto e eu busco pra você!`,
+  ].join('\n'), { parse_mode: H });
 });
 
-// ==================== BUSCAR ====================
-
+// ==================== /buscar ====================
 bot.onText(/\/buscar (.+)/, async (msg, match) => {
-  const query = match[1].trim();
+  const q = match[1].trim();
   const chatId = msg.chat.id;
-  bot.sendMessage(chatId, `🔍 Buscando "${query}"...`);
+  await bot.sendMessage(chatId, `🔍 Buscando "<b>${esc(q)}</b>"...`, { parse_mode: H });
 
   try {
-    const r = await fetch(`${API_BASE}/api/products?search=${encodeURIComponent(query)}&limit=10&sort=price_asc&in_stock=true`);
-    const data = await r.json();
+    const data = await api(`/products?search=${encodeURIComponent(q)}&limit=10&sort=price_asc&in_stock=true`);
+    if (!data.products?.length) return bot.sendMessage(chatId, `Nada encontrado para "${esc(q)}"`);
 
-    if (!data.products?.length) {
-      return bot.sendMessage(chatId, `Nenhum produto encontrado para "${query}"`);
-    }
-
-    let text = `🔍 *${data.total} resultados* para "${query}"\n\n`;
+    const lines = [`🔍 <b>${data.total} resultados</b> para "${esc(q)}"\n`];
     data.products.slice(0, 8).forEach((p, i) => {
-      const price = p.price_usd ? `US$ ${parseFloat(p.price_usd).toFixed(2)}` : 'Consultar';
-      const disc = p.discount_percent ? ` (-${p.discount_percent}%)` : '';
-      text += `${i + 1}. *${esc(p.name.substring(0, 80))}*\n`;
-      text += `   💰 ${price}${disc} — ${p.store_name}\n`;
-      if (p.brand) text += `   🏷️ ${p.brand}\n`;
-      text += `   [Ver na loja](${p.product_url})\n\n`;
+      const disc = p.discount_percent ? ` <b>(-${p.discount_percent}%)</b>` : '';
+      lines.push(`<b>${i+1}.</b> ${esc(p.name.substring(0,80))}`);
+      lines.push(`   💰 <b>${$(p.price_usd)}</b>${disc}`);
+      lines.push(`   🏪 ${esc(p.store_name)}${p.brand ? ' · '+esc(p.brand) : ''}`);
+      lines.push(`   <a href="${p.product_url}">Ver na loja →</a>\n`);
     });
+    if (data.total > 8) lines.push(`<i>...e mais ${data.total - 8} resultados</i>`);
 
-    if (data.total > 8) text += `_...e mais ${data.total - 8} resultados_`;
-
-    bot.sendMessage(chatId, text, { parse_mode: 'Markdown', disable_web_page_preview: true });
-  } catch (e) {
-    bot.sendMessage(chatId, `Erro ao buscar: ${e.message}`);
-  }
+    bot.sendMessage(chatId, lines.join('\n'), { parse_mode: H, disable_web_page_preview: true });
+  } catch (e) { bot.sendMessage(chatId, `Erro: ${e.message}`); }
 });
 
-// ==================== COMPARAR ====================
-
+// ==================== /comparar ====================
 bot.onText(/\/comparar (.+)/, async (msg, match) => {
-  const query = match[1].trim();
+  const q = match[1].trim();
   const chatId = msg.chat.id;
-  bot.sendMessage(chatId, `⚖️ Comparando "${query}" em 20 lojas...`);
+  await bot.sendMessage(chatId, `⚖️ Comparando "<b>${esc(q)}</b>" em 20 lojas...`, { parse_mode: H });
 
   try {
-    const r = await fetch(`${API_BASE}/api/compare?search=${encodeURIComponent(query)}`);
-    const data = await r.json();
+    const data = await api(`/compare?search=${encodeURIComponent(q)}`);
+    if (!data.groups?.length) return bot.sendMessage(chatId, `Nenhum resultado para comparação`);
 
-    if (!data.groups?.length) {
-      return bot.sendMessage(chatId, `Nenhum resultado para comparação de "${query}"`);
-    }
-
-    let text = `⚖️ *Comparação: "${query}"*\n\n`;
+    const lines = [`⚖️ <b>Comparação de preços</b>\n`];
     data.groups.slice(0, 5).forEach(g => {
-      text += `📦 *${esc(g.name.substring(0, 60))}*\n`;
-      g.stores.slice(0, 5).forEach((s, i) => {
-        const marker = i === 0 ? '🏆' : '  ';
-        text += `${marker} ${s.store}: *US$ ${s.price.toFixed(2)}*${s.is_promo ? ' 🏷️' : ''}\n`;
+      lines.push(`📦 <b>${esc(g.name.substring(0,65))}</b>`);
+      g.stores.slice(0, 6).forEach((s, i) => {
+        const tag = i === 0 ? '🏆 ' : '     ';
+        lines.push(`${tag}${esc(s.store)}: <b>${$(s.price)}</b>${s.is_promo ? ' 🏷️' : ''}`);
       });
-      if (g.savings > 0) text += `💰 Economia: US$ ${g.savings.toFixed(2)}\n`;
-      text += '\n';
+      if (g.savings > 0) lines.push(`     💰 <b>Economia: ${$(g.savings)}</b>`);
+      lines.push('');
     });
 
-    bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
-  } catch (e) {
-    bot.sendMessage(chatId, `Erro ao comparar: ${e.message}`);
-  }
+    bot.sendMessage(chatId, lines.join('\n'), { parse_mode: H, disable_web_page_preview: true });
+  } catch (e) { bot.sendMessage(chatId, `Erro: ${e.message}`); }
 });
 
-// ==================== PROMOS ====================
-
+// ==================== /promos ====================
 bot.onText(/\/promos/, async (msg) => {
-  const chatId = msg.chat.id;
   try {
-    const r = await fetch(`${API_BASE}/api/promotions?limit=10&min_discount=10`);
-    const data = await r.json();
+    const data = await api('/promotions?limit=10&min_discount=10');
+    if (!data.promotions?.length) return bot.sendMessage(msg.chat.id, 'Sem promoções acima de 10% agora');
 
-    if (!data.promotions?.length) {
-      return bot.sendMessage(chatId, 'Nenhuma promoção ativa no momento');
-    }
-
-    let text = `🏷️ *Top Promoções* (${data.total} encontradas)\n\n`;
+    const lines = [`🏷️ <b>Top ${data.total} Promoções</b>\n`];
     data.promotions.slice(0, 10).forEach((p, i) => {
-      text += `${i + 1}. *-${p.discount_percent}%* ${esc(p.name.substring(0, 60))}\n`;
-      text += `   US$ ${parseFloat(p.price_usd).toFixed(2)}`;
-      if (p.price_original) text += ` ~~US$ ${parseFloat(p.price_original).toFixed(2)}~~`;
-      text += ` — ${p.store_name}\n\n`;
+      lines.push(`<b>${i+1}. -${p.discount_percent}%</b> ${esc(p.name.substring(0,60))}`);
+      lines.push(`   <b>${$(p.price_usd)}</b>${p.price_original ? ` <s>${$(p.price_original)}</s>` : ''}`);
+      lines.push(`   🏪 ${esc(p.store_name)}`);
+      lines.push(`   <a href="${p.product_url}">Ver oferta →</a>\n`);
     });
 
-    bot.sendMessage(chatId, text, { parse_mode: 'Markdown', disable_web_page_preview: true });
-  } catch (e) {
-    bot.sendMessage(chatId, `Erro: ${e.message}`);
-  }
+    bot.sendMessage(msg.chat.id, lines.join('\n'), { parse_mode: H, disable_web_page_preview: true });
+  } catch (e) { bot.sendMessage(msg.chat.id, `Erro: ${e.message}`); }
 });
 
-// ==================== ALERTAS ====================
-
+// ==================== /alertas ====================
 bot.onText(/\/alertas/, async (msg) => {
-  const chatId = msg.chat.id;
   try {
-    const r = await fetch(`${API_BASE}/api/alerts/price-drops?hours=24&min_drop=5`);
-    const data = await r.json();
+    const data = await api('/alerts/price-drops?hours=24&min_drop=5');
+    if (!data.drops?.length) return bot.sendMessage(msg.chat.id, '📉 Sem quedas de preço nas últimas 24h');
 
-    if (!data.drops?.length) {
-      return bot.sendMessage(chatId, '📉 Nenhuma queda de preço nas últimas 24h');
-    }
-
-    let text = `📉 *Quedas de preço (24h)*\n\n`;
+    const lines = [`📉 <b>Quedas de preço (últimas 24h)</b>\n`];
     data.drops.slice(0, 10).forEach(d => {
-      text += `🔻 *-${d.drop_percent}%* ${esc(d.name?.substring(0, 55))}\n`;
-      text += `   US$ ${d.old_price} → *US$ ${d.new_price}* (${d.store_name})\n\n`;
+      lines.push(`🔻 <b>-${d.drop_percent}%</b> ${esc(d.name?.substring(0,55))}`);
+      lines.push(`   ${$(d.old_price)} → <b>${$(d.new_price)}</b>`);
+      lines.push(`   🏪 ${esc(d.store_name)}\n`);
     });
 
-    bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
-  } catch (e) {
-    bot.sendMessage(chatId, `Erro: ${e.message}`);
-  }
+    bot.sendMessage(msg.chat.id, lines.join('\n'), { parse_mode: H });
+  } catch (e) { bot.sendMessage(msg.chat.id, `Erro: ${e.message}`); }
 });
 
-// ==================== PONTE ====================
-
+// ==================== /ponte ====================
 bot.onText(/\/ponte/, async (msg) => {
   const chatId = msg.chat.id;
   try {
-    const r = await fetch(`${API_BASE}/api/ponte-status`);
-    const data = await r.json();
+    const data = await api('/ponte-status');
     const c = data.cotacao || {};
     const cams = data.cameras || [];
 
-    // 1. Cotação
-    let cotText = `🌉 *Ponte da Amizade \\- Status*\n\n`;
-    cotText += `💱 *Cotação agora:*\n`;
-    cotText += `USD/BRL: *R\\$ ${c.usd_brl?.toFixed(2) || '\\-\\-'}*\n`;
-    cotText += `USD/PYG: *Gs ${Math.round(c.usd_pyg || 0).toLocaleString().replace(/\./g,'\\.')}*\n`;
-    cotText += `BRL/PYG: *Gs ${Math.round(c.brl_pyg || 0).toLocaleString().replace(/\./g,'\\.')}*`;
-    await bot.sendMessage(chatId, cotText, { parse_mode: 'MarkdownV2' });
-
-    // 2. Foto principal (YouTube thumbnail em alta qualidade)
-    const ytCam = cams.find(c => c.video_id);
+    // Foto da câmera YouTube
+    const ytCam = cams.find(cam => cam.video_id);
     if (ytCam) {
-      const thumbUrl = `https://img.youtube.com/vi/${ytCam.video_id}/sddefault.jpg`;
       try {
-        await bot.sendPhoto(chatId, thumbUrl, {
-          caption: `📹 ${ytCam.name}\nFonte: ${ytCam.source}\n\n🔴 AO VIVO`,
+        await bot.sendPhoto(chatId, `https://img.youtube.com/vi/${ytCam.video_id}/sddefault.jpg`, {
+          caption: [
+            `🌉 Ponte da Amizade - AO VIVO`,
+            ``,
+            `💱 Cotação agora:`,
+            `USD/BRL: R$ ${c.usd_brl?.toFixed(2) || '--'}`,
+            `USD/PYG: Gs ${Math.round(c.usd_pyg || 0).toLocaleString()}`,
+            `BRL/PYG: Gs ${Math.round(c.brl_pyg || 0).toLocaleString()}`,
+          ].join('\n'),
         });
+        await new Promise(r => setTimeout(r, 1000));
       } catch (_) {}
-      await new Promise(r => setTimeout(r, 1000));
     }
 
-    // 3. Lista de todas as câmeras em UMA mensagem
-    let camText = `📹 *Câmeras ao vivo:*\n\n`;
+    // Lista de câmeras
+    const lines = [`📹 <b>Câmeras ao vivo (${cams.length})</b>\n`];
     cams.forEach((cam, i) => {
-      camText += `${i + 1}\\. *${esc(cam.name)}*\n`;
-      camText += `   _${esc(cam.source)}_\n`;
-      camText += `   [Assistir ao vivo](${cam.url})\n\n`;
+      lines.push(`${i+1}. <b>${esc(cam.name)}</b>`);
+      lines.push(`   <i>${esc(cam.source)}</i> — <a href="${cam.url}">Assistir</a>`);
     });
-    camText += `🔗 [CDE ao Vivo \\- Todas](${data.cde_ao_vivo})\n`;
-    camText += `🤖 [Bot alertas trânsito](${data.telegram_bot})`;
+    lines.push('');
+    lines.push(`🔗 <a href="${data.cde_ao_vivo || 'https://cdeaovivo.com'}">CDE ao Vivo - Todas as câmeras</a>`);
+    lines.push(`🤖 <a href="${data.telegram_bot || 'https://t.me/agentecdeaovivo_bot'}">Bot alertas de trânsito</a>`);
 
-    await bot.sendMessage(chatId, camText, { parse_mode: 'MarkdownV2', disable_web_page_preview: true });
-  } catch (e) {
-    bot.sendMessage(chatId, `Erro ao carregar ponte: ${e.message}`);
-  }
+    await bot.sendMessage(chatId, lines.join('\n'), { parse_mode: H, disable_web_page_preview: true });
+  } catch (e) { bot.sendMessage(chatId, `Erro: ${e.message}`); }
 });
 
-// ==================== COTAÇÃO ====================
-
+// ==================== /cotacao ====================
 bot.onText(/\/cotacao/, async (msg) => {
-  const chatId = msg.chat.id;
   try {
-    const r = await fetch(`${API_BASE}/api/cotacao`);
-    const data = await r.json();
-
-    let text = `💱 *Cotação em tempo real*\n\n`;
-    text += `🇺🇸 USD → 🇧🇷 BRL\n`;
-    text += `   Compra: *R$ ${data.USD_BRL?.bid?.toFixed(4)}*\n`;
-    text += `   Venda: *R$ ${data.USD_BRL?.ask?.toFixed(4)}*\n\n`;
-    text += `🇺🇸 USD → 🇵🇾 PYG\n`;
-    text += `   Compra: *Gs ${Math.round(data.USD_PYG?.bid || 0).toLocaleString()}*\n`;
-    text += `   Venda: *Gs ${Math.round(data.USD_PYG?.ask || 0).toLocaleString()}*\n\n`;
-    text += `🇧🇷 BRL → 🇵🇾 PYG\n`;
-    text += `   Compra: *Gs ${Math.round(data.BRL_PYG?.bid || 0).toLocaleString()}*\n`;
-    text += `   Venda: *Gs ${Math.round(data.BRL_PYG?.ask || 0).toLocaleString()}*\n\n`;
-    text += `_Fonte: ${data.source}_`;
-
-    bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
-  } catch (e) {
-    bot.sendMessage(chatId, `Erro: ${e.message}`);
-  }
+    const data = await api('/cotacao');
+    const lines = [
+      `💱 <b>Cotação em tempo real</b>\n`,
+      `🇺🇸 <b>Dólar → Real</b>`,
+      `   Compra: <b>R$ ${data.USD_BRL?.bid?.toFixed(4)}</b>`,
+      `   Venda: <b>R$ ${data.USD_BRL?.ask?.toFixed(4)}</b>\n`,
+      `🇺🇸 <b>Dólar → Guarani</b>`,
+      `   Compra: <b>Gs ${Math.round(data.USD_PYG?.bid || 0).toLocaleString()}</b>`,
+      `   Venda: <b>Gs ${Math.round(data.USD_PYG?.ask || 0).toLocaleString()}</b>\n`,
+      `🇧🇷 <b>Real → Guarani</b>`,
+      `   Compra: <b>Gs ${Math.round(data.BRL_PYG?.bid || 0).toLocaleString()}</b>`,
+      `   Venda: <b>Gs ${Math.round(data.BRL_PYG?.ask || 0).toLocaleString()}</b>\n`,
+      `<i>Fonte: ${data.source || 'AwesomeAPI'}</i>`,
+    ];
+    bot.sendMessage(msg.chat.id, lines.join('\n'), { parse_mode: H });
+  } catch (e) { bot.sendMessage(msg.chat.id, `Erro: ${e.message}`); }
 });
 
-// ==================== CALCULAR ====================
-
-bot.onText(/\/calcular (\d+[\.,]?\d*)/, (msg, match) => {
-  const chatId = msg.chat.id;
+// ==================== /calc ====================
+bot.onText(/\/calc(?:ular)? (\d+[\.,]?\d*)/, async (msg, match) => {
   const priceUsd = parseFloat(match[1].replace(',', '.'));
-  const dolar = 5.30; // TODO: puxar cotação real
-  const iof = 3.38;
+  if (!priceUsd) return;
 
+  // Puxar cotação real
+  let dolar = 5.30;
+  try {
+    const cot = await api('/cotacao');
+    if (cot.USD_BRL?.bid) dolar = cot.USD_BRL.bid;
+  } catch (_) {}
+
+  const iof = 3.38;
   const totalBrl = priceUsd * dolar;
   const iofVal = totalBrl * (iof / 100);
   const excess = Math.max(0, priceUsd - 500);
   const tax = excess * dolar * 0.5;
   const total = totalBrl + iofVal + tax;
 
-  let text = `🧮 *Calculadora de Importação*\n\n`;
-  text += `Produto: *US$ ${priceUsd.toFixed(2)}*\n`;
-  text += `Câmbio: R$ ${dolar.toFixed(2)}\n\n`;
-  text += `Em reais: R$ ${totalBrl.toFixed(2)}\n`;
-  text += `IOF ${iof}%: R$ ${iofVal.toFixed(2)}\n`;
-  if (excess > 0) {
-    text += `Imposto 50% (excedente US$ ${excess.toFixed(2)}): R$ ${tax.toFixed(2)}\n`;
-  } else {
-    text += `Dentro da cota US$ 500 ✅\n`;
-  }
-  text += `\n💰 *Total: R$ ${total.toFixed(2)}*`;
+  const lines = [
+    `🧮 <b>Calculadora de Importação</b>\n`,
+    `📦 Produto: <b>${$(priceUsd)}</b>`,
+    `💱 Câmbio: <b>${R$(dolar)}</b> (tempo real)\n`,
+    `Em reais: ${R$(totalBrl)}`,
+    `IOF ${iof}%: ${R$(iofVal)}`,
+    excess > 0
+      ? `Imposto 50% (excedente ${$(excess)}): ${R$(tax)}`
+      : `✅ Dentro da cota US$ 500`,
+    ``,
+    `💰 <b>Total: ${R$(total)}</b>`,
+  ];
 
-  bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
+  bot.sendMessage(msg.chat.id, lines.join('\n'), { parse_mode: H });
 });
 
-// ==================== STATS ====================
-
+// ==================== /stats ====================
 bot.onText(/\/stats/, async (msg) => {
-  const chatId = msg.chat.id;
   try {
-    const r = await fetch(`${API_BASE}/api/health`);
-    const data = await r.json();
+    const data = await api('/health');
+    const lines = [
+      `📊 <b>FacilitaParaguay - Status</b>\n`,
+      `📦 Produtos: <b>${(data.total_products || 0).toLocaleString()}</b>`,
+      `🏪 Lojas: <b>${data.total_stores}</b>`,
+      `🟢 Status: <b>${data.status}</b>\n`,
+      `<b>Por loja:</b>`,
+    ];
+    (data.scrapers || [])
+      .sort((a, b) => (b.products_found || 0) - (a.products_found || 0))
+      .forEach(s => {
+        const icon = (s.products_found || 0) > 0 ? '✅' : '⚠️';
+        lines.push(`${icon} ${esc(s.name)}: <b>${(s.products_found || 0).toLocaleString()}</b>`);
+      });
 
-    let text = `📊 *FacilitaParaguay - Estatísticas*\n\n`;
-    text += `📦 Produtos: *${data.total_products?.toLocaleString()}*\n`;
-    text += `🏪 Lojas: *${data.total_stores}*\n`;
-    text += `Status: *${data.status}*\n\n`;
-    text += `*Por loja:*\n`;
-    data.scrapers?.sort((a, b) => (b.products_found || 0) - (a.products_found || 0)).forEach(s => {
-      const icon = s.products_found > 0 ? '✅' : '⚠️';
-      text += `${icon} ${s.name}: ${s.products_found?.toLocaleString() || 0}\n`;
-    });
-
-    bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
-  } catch (e) {
-    bot.sendMessage(chatId, `Erro: ${e.message}`);
-  }
+    bot.sendMessage(msg.chat.id, lines.join('\n'), { parse_mode: H });
+  } catch (e) { bot.sendMessage(msg.chat.id, `Erro: ${e.message}`); }
 });
 
-// ==================== LOJAS ====================
-
+// ==================== /lojas ====================
 bot.onText(/\/lojas/, async (msg) => {
-  const chatId = msg.chat.id;
   try {
-    const r = await fetch(`${API_BASE}/api/stores`);
-    const stores = await r.json();
+    const stores = await api('/stores');
+    const lines = [`🏪 <b>${stores.length} Lojas Monitoradas</b>\n`];
+    stores
+      .sort((a, b) => (parseInt(b.product_count) || 0) - (parseInt(a.product_count) || 0))
+      .forEach(s => {
+        const c = parseInt(s.product_count) || 0;
+        const promo = parseInt(s.promo_count) || 0;
+        const icon = c > 0 ? '🟢' : '🔴';
+        lines.push(`${icon} <b>${esc(s.name)}</b>: ${c.toLocaleString()} produtos${promo > 0 ? ` (${promo} promos)` : ''}`);
+      });
 
-    let text = `🏪 *20 Lojas Monitoradas*\n\n`;
-    stores.sort((a, b) => (parseInt(b.product_count) || 0) - (parseInt(a.product_count) || 0)).forEach(s => {
-      const count = parseInt(s.product_count) || 0;
-      const icon = count > 0 ? '🟢' : '🔴';
-      text += `${icon} *${s.name}*: ${count.toLocaleString()} produtos\n`;
-    });
-
-    bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
-  } catch (e) {
-    bot.sendMessage(chatId, `Erro: ${e.message}`);
-  }
+    bot.sendMessage(msg.chat.id, lines.join('\n'), { parse_mode: H });
+  } catch (e) { bot.sendMessage(msg.chat.id, `Erro: ${e.message}`); }
 });
 
-// ==================== BUSCA LIVRE (texto sem comando) ====================
-
+// ==================== BUSCA LIVRE ====================
 bot.on('message', async (msg) => {
-  if (msg.text?.startsWith('/')) return; // Ignorar comandos
-  if (!msg.text || msg.text.length < 3) return;
-
-  const query = msg.text.trim();
+  if (!msg.text || msg.text.startsWith('/') || msg.text.length < 3) return;
+  const q = msg.text.trim();
   const chatId = msg.chat.id;
 
   try {
-    const r = await fetch(`${API_BASE}/api/products?search=${encodeURIComponent(query)}&limit=5&sort=price_asc&in_stock=true`);
-    const data = await r.json();
-
+    const data = await api(`/products?search=${encodeURIComponent(q)}&limit=5&sort=price_asc&in_stock=true`);
     if (!data.products?.length) {
-      return bot.sendMessage(chatId, `Nenhum resultado para "${query}"\n\nTente /buscar ${query} pra busca avançada`);
+      return bot.sendMessage(chatId, `Nada encontrado para "${esc(q)}".\nTente /buscar ${esc(q)}`);
     }
 
-    let text = `🔍 *${data.total} resultados* para "${esc(query)}"\n\n`;
+    const lines = [`🔍 <b>${data.total} resultados</b> para "${esc(q)}"\n`];
     data.products.slice(0, 5).forEach((p, i) => {
-      const price = p.price_usd ? `US$ ${parseFloat(p.price_usd).toFixed(2)}` : 'Consultar';
-      text += `${i + 1}. *${esc(p.name.substring(0, 70))}*\n`;
-      text += `   ${price} — ${p.store_name}\n`;
-      text += `   [Ver](${p.product_url})\n\n`;
+      lines.push(`<b>${i+1}.</b> ${esc(p.name.substring(0,70))}`);
+      lines.push(`   <b>${$(p.price_usd)}</b> — ${esc(p.store_name)}`);
+      lines.push(`   <a href="${p.product_url}">Ver →</a>\n`);
     });
+    if (data.total > 5) lines.push(`<i>Use /buscar ${esc(q)} pra ver todos</i>`);
 
-    if (data.total > 5) text += `Use /buscar ${query} pra ver todos os ${data.total} resultados`;
-
-    bot.sendMessage(chatId, text, { parse_mode: 'Markdown', disable_web_page_preview: true });
-  } catch (e) {
-    // Silencioso pra não spammar
-  }
+    bot.sendMessage(chatId, lines.join('\n'), { parse_mode: H, disable_web_page_preview: true });
+  } catch (_) {}
 });
 
-function esc(text) {
-  if (!text) return '';
-  return text.replace(/[_*[\]()~`>#+=|{}.!-]/g, '\\$&');
-}
+// Escape HTML
+function esc(s) { return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 module.exports = { bot };
