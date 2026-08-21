@@ -39,7 +39,7 @@ const STORE_CONFIGS = {
   'one-click':            { Class: OneClickScraper },
   'star-company':         { Class: StarCompanyScraper },
   'la-petisquera':        { Class: LaPetisqueraScraper },
-  'visaovip':             { Class: VisaoVipScraper },
+  'visaovip':             { Class: VisaoVipScraper, config: { baseUrl: 'https://www.visaovip.com' } },
   'elegancia-company':    { Class: EleganciaCompanyScraper },
   'multipass':            { Class: MultiPassScraper },
   'agatres':              { Class: AgatresScraper },
