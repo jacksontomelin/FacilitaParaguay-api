@@ -43,7 +43,7 @@ const STORE_CONFIGS = {
   'elegancia-company':    { Class: EleganciaCompanyScraper },
   'multipass':            { Class: MultiPassScraper },
   'agatres':              { Class: AgatresScraper },
-  'madrid-center':        { Class: MadridCenterScraper },
+  'madrid-center':        { Class: MadridCenterScraper, config: { baseUrl: 'https://madridcenterimportados.com' } },
   'flytec-computers':     { Class: FlytecScraper },
   'atacado-connect':      { Class: AtacadoConnectScraper },
   'pontocom':             { Class: PontocomScraper },

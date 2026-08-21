@@ -1,72 +1,96 @@
-const BaseScraper = require('./BaseScraper');
+const FlareSolverrScraper = require('./FlareSolverrScraper');
 const cheerio = require('cheerio');
-const { scrapeTxtList } = require('./TxtBooster');
 
-class MadridCenterScraper extends BaseScraper {
-  constructor() {
-    super('madrid-center');
-    this.baseUrl = 'https://www.madridcenter.com';
+class MadridCenterScraper extends FlareSolverrScraper {
+  constructor(storeSlug, config={}) {
+    super(storeSlug || 'madrid-center', {
+      baseUrl: 'https://madridcenterimportados.com',
+      useGraphQL: false,
+      ...config,
+    });
     this.categories = [
-      { name: 'Receptores', slug: 'receptores', path: '/produtos/receptor' },
-      { name: 'Celulares', slug: 'celulares', path: '/produtos/celulares' },
-      { name: 'Informática', slug: 'informatica', path: '/produtos/informatica' },
-      { name: 'Automotivo', slug: 'automotivo', path: '/produtos/automotivo' },
-      { name: 'TV & Vídeo', slug: 'tv-video', path: '/produtos/tv-video' },
-      { name: 'Games', slug: 'games', path: '/produtos/games' },
-      { name: 'Áudio', slug: 'audio', path: '/produtos/audio' },
-      { name: 'Relógio', slug: 'relogio', path: '/produtos/relogio' },
-      { name: 'Beleza & Saúde', slug: 'beleza-saude', path: '/produtos/beleza-saude' },
-      { name: 'Eletroportáteis', slug: 'eletroportateis', path: '/produtos/eletroportateis' },
-      { name: 'Câmeras & Filmadoras', slug: 'cameras', path: '/produtos/cameras-filmadoras' },
-      { name: 'Segurança', slug: 'seguranca', path: '/produtos/seguranca' },
-      { name: 'Bebidas', slug: 'bebidas', path: '/produtos/bebidas' },
-      { name: 'Brinquedos', slug: 'brinquedos', path: '/produtos/brinquedos-e-outros' },
-      { name: 'Iluminação', slug: 'iluminacao', path: '/produtos/iluminacao-leds' },
+      {name:'TV e Vídeo',slug:'tv-e-video-629'},
+      {name:'Eletroportáteis',slug:'eletroportateis-630'},
+      {name:'Ar Condicionado',slug:'ar-condicionado-488'},
+      {name:'Celulares',slug:'celulares-e-telefones-632'},
+      {name:'Informática',slug:'informatica-634'},
+      {name:'Perfumes',slug:'perfumes-936'},
+      {name:'Automotivo',slug:'automotivo-628'},
     ];
+    this.searchTerms = ['iphone','samsung','xiaomi','macbook','jbl','sony','garmin','playstation','notebook','perfume','air fryer','smart tv'];
   }
+
   async scrape() {
-    const page = await this.createPage();
+    const { solveUrl } = require('../flaresolverr');
+    console.log(`[${this.storeSlug}] Modo FlareSolverr HTML`);
+
+    // Home
     try {
-      await scrapeTxtList(this, page, `${this.baseUrl}/lista-txt`);
-      for (const cat of this.categories) {
-        try {
-          const catId = await this.upsertCategory(cat.name, cat.slug, null, this.baseUrl + cat.path);
-          await this.scrapeCat(page, cat, catId);
-          await this.delay(2000 + Math.random() * 2000);
-        } catch (err) { this.stats.errors++; }
-      }
-    } finally { await page.close(); }
-  }
-  async scrapeCat(page, cat, categoryId) {
-    let p = 1, hasMore = true;
-    while (hasMore && p <= 30) {
+      const home = await solveUrl(this.baseUrl+'/home');
+      const homeCatId = await this.upsertCategory('Destaques','destaques',null,this.baseUrl);
+      const prods = this.parseMadridProducts(home.html, homeCatId);
+      console.log(`[${this.storeSlug}] Home: ${prods.length}`);
+      for(const p of prods) await this.upsertProduct(p);
+    } catch(e) { console.error(`[${this.storeSlug}] Home erro: ${e.message}`); }
+
+    // Categorias
+    for (const cat of this.categories) {
       try {
-        const url = p > 1 ? `${this.baseUrl}${cat.path}?page=${p}` : `${this.baseUrl}${cat.path}`;
-        await page.goto(url, { waitUntil: 'domcontentloaded' }); await this.delay(2500);
-        const html = await page.content(); const $ = cheerio.load(html);
-        const products = []; const seen = new Set();
-        $('a[href*="/produto/"]').each((_, el) => {
-          const href = $(el).attr('href') || ''; if (seen.has(href)) return; seen.add(href);
-          const fullUrl = href.startsWith('http') ? href : this.baseUrl + href;
-          const $ctx = $(el).closest('div, li') || $(el).parent();
-          let name = $ctx.find('h3, h4, .nome, .name').first().text().trim() || $(el).find('img').attr('alt') || '';
-          if (!name || name.length < 5) return;
-          const text = $ctx.text();
-          const pm = text.match(/U?\$\s*([\d.,]+)/i);
-          let price = null;
-          if (pm) { let v = pm[1]; if (v.includes(',')) v = v.replace(',', '.'); price = parseFloat(v) || null; }
-          const codMatch = text.match(/Cod:\s*(\d+)/i) || href.match(/(\d{5,})/);
-          let img = $ctx.find('img').first().attr('src') || '';
-          products.push({ name: name.substring(0,500), slug: codMatch?.[1] || href.split('/').pop(), external_id: codMatch?.[1] || '',
-            price_usd: price, price_original: null, discount_percent: null, currency: 'USD', brand: null,
-            image_url: img, product_url: fullUrl, category_id: categoryId, in_stock: true, specs: {} });
-        });
-        if (products.length === 0) { hasMore = false; break; }
-        console.log(`[${this.storeSlug}] ${cat.slug} p${p}: ${products.length}`);
-        for (const pr of products) await this.upsertProduct(pr);
-        hasMore = $('a[rel="next"], .next, a:contains("Próx")').length > 0 || products.length >= 12; p++;
-      } catch (err) { this.stats.errors++; hasMore = false; }
+        const catId = await this.upsertCategory(cat.name, cat.slug, null, `${this.baseUrl}/categoria/${cat.slug}`);
+        const result = await solveUrl(`${this.baseUrl}/categoria/${cat.slug}`);
+        const prods = this.parseMadridProducts(result.html, catId);
+        console.log(`[${this.storeSlug}] ${cat.name}: ${prods.length}`);
+        for(const p of prods) await this.upsertProduct(p);
+        await this.delay(2000);
+      } catch(e) { this.stats.errors++; }
     }
+
+    // Busca
+    for (const term of this.searchTerms) {
+      try {
+        const catSlug = 'busca-'+term.replace(/\s+/g,'-');
+        const catId = await this.upsertCategory('Busca: '+term, catSlug);
+        const result = await solveUrl(`${this.baseUrl}/buscar?q=${encodeURIComponent(term)}&limit=48`);
+        const prods = this.parseMadridProducts(result.html, catId);
+        console.log(`[${this.storeSlug}] Busca "${term}": ${prods.length}`);
+        for(const p of prods) await this.upsertProduct(p);
+        await this.delay(1500);
+      } catch(e) { this.stats.errors++; }
+    }
+  }
+
+  parseMadridProducts(html, categoryId) {
+    const products=[]; const seen=new Set();
+    const text = cheerio.load(html).text();
+    // Padrão: MARCA\nCod: XXXXXX\nNome do produto\n$ XXX.XX
+    const blocks = text.split(/(?=[A-Z]{2,}\s*\nCod:)/);
+    for (const block of blocks) {
+      const codMatch = block.match(/Cod:\s*(\d+)/);
+      if (!codMatch || seen.has(codMatch[1])) continue;
+      seen.add(codMatch[1]);
+      const lines = block.split('\n').map(l=>l.trim()).filter(l=>l.length>0);
+      let brand='',name='',price=null;
+      for (const line of lines) {
+        if (line.match(/^Cod:/)) continue;
+        if (line.match(/^\$\s*([\d.,]+)/)) {
+          const m=line.match(/\$\s*([\d.,]+)/);
+          if(m){let v=m[1].replace(/,/g,'');price=parseFloat(v);} continue;
+        }
+        if (line.match(/^R\$|^AR\$|^₲/)) continue;
+        if (line.match(/^Veja|^Ver/i)) continue;
+        if (!brand && line.length<25 && line===line.toUpperCase()) { brand=line; continue; }
+        if (!name && line.length>15) name=line;
+      }
+      if (!name || !price) continue;
+      products.push({
+        name:name.substring(0,500),slug:codMatch[1],external_id:codMatch[1],
+        price_usd:price,price_original:null,discount_percent:null,currency:'USD',
+        brand:brand||null,image_url:'',
+        product_url:`${this.baseUrl}/produto/${name.toLowerCase().replace(/[^a-z0-9]+/g,'-')}-${codMatch[1]}`,
+        category_id:categoryId,in_stock:true,specs:{},
+      });
+    }
+    return products;
   }
 }
 module.exports = MadridCenterScraper;

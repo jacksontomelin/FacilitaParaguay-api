@@ -1,77 +1,80 @@
 const BaseScraper = require('./BaseScraper');
-const cheerio = require('cheerio');
 
 class EleganciaCompanyScraper extends BaseScraper {
   constructor() {
     super('elegancia-company');
     this.baseUrl = 'http://www.eleganciacompany.com';
-    // Custom: /productos/CATEGORIA/ID
-    this.categories = [
-      { name: 'Perfumes', slug: 'perfumes', path: '/productos/perfumes' },
-      { name: 'Cosméticos', slug: 'cosmeticos', path: '/productos/cosmeticos' },
-      { name: 'Maquiagem', slug: 'maquiagem', path: '/productos/maquillaje' },
-      { name: 'Skincare', slug: 'skincare', path: '/productos/skincare' },
-      { name: 'Bolsas', slug: 'bolsas', path: '/productos/bolsas' },
-      { name: 'Acessórios', slug: 'acessorios', path: '/productos/accesorios' },
-      { name: 'Relógios', slug: 'relogios', path: '/productos/relojes' },
-    ];
+    this.menus = ['perfumes','nicho','cosmeticos','maquillaje','outlet','arabes'];
   }
 
   async scrape() {
     const page = await this.createPage();
     try {
-      for (const cat of this.categories) {
+      // Home
+      await page.goto(this.baseUrl, { waitUntil: 'networkidle' });
+      await this.delay(4000);
+      const homeCatId = await this.upsertCategory('Destaques','destaques',null,this.baseUrl);
+      await this.parseProducts(page, homeCatId);
+
+      // Categorias via ?menu_id=
+      for (const menu of this.menus) {
         try {
-          const catId = await this.upsertCategory(cat.name, cat.slug, null, this.baseUrl + cat.path);
-          await this.scrapeCategory(page, cat, catId);
-          await this.delay(2000 + Math.random() * 2000);
-        } catch (err) { this.stats.errors++; }
+          const url = `${this.baseUrl}/productos?menu_id=${menu}`;
+          const catId = await this.upsertCategory(menu.charAt(0).toUpperCase()+menu.slice(1), menu, null, url);
+          await page.goto(url, { waitUntil: 'networkidle' });
+          await this.delay(4000);
+          for (let i=0;i<10;i++){await page.evaluate(()=>window.scrollBy(0,window.innerHeight));await this.delay(1000);}
+          await this.parseProducts(page, catId);
+          await this.delay(2000);
+        } catch(e) { this.stats.errors++; console.error(`[${this.storeSlug}] Erro ${menu}: ${e.message}`); }
       }
     } finally { await page.close(); }
   }
 
-  async scrapeCategory(page, cat, categoryId) {
-    let currentPage = 1;
-    let hasMore = true;
-    while (hasMore && currentPage <= 30) {
-      try {
-        const url = currentPage > 1 ? `${this.baseUrl}${cat.path}?page=${currentPage}` : `${this.baseUrl}${cat.path}`;
-        await page.goto(url, { waitUntil: 'networkidle' });
-        await this.delay(2500);
-        const html = await page.content();
-        const $ = cheerio.load(html);
-        const products = [];
-        const seen = new Set();
-        $('a[href*="/productos/"]').each((_, el) => {
-          const href = $(el).attr('href') || '';
-          const fullUrl = href.startsWith('http') ? href : this.baseUrl + href;
-          if (seen.has(fullUrl)) return;
-          // Produto tem ID numérico no final
-          if (!href.match(/\/\d+$/)) return;
-          seen.add(fullUrl);
-          const $ctx = $(el).closest('div, li') || $(el).parent();
-          let name = $(el).find('img').attr('alt') || $ctx.find('h3, h4, .name').first().text().trim() || $(el).text().trim().split('\n')[0];
-          if (!name || name.length < 3) return;
-          const text = $ctx.text();
-          const m = text.match(/U?\$\s*([\d.,]+)/i);
-          let priceUsd = null;
-          if (m) { let v = m[1]; if (v.includes(',')) v = v.replace(',', '.'); priceUsd = parseFloat(v) || null; }
-          let img = $ctx.find('img').first().attr('src') || '';
-          if (img && !img.startsWith('http')) img = this.baseUrl + img;
-          products.push({
-            name: name.replace(/\s+/g, ' ').trim().substring(0, 500),
-            slug: href.split('/').pop(), external_id: href.split('/').pop(),
-            price_usd: priceUsd, price_original: null, discount_percent: null,
-            currency: 'USD', brand: null, image_url: img, product_url: fullUrl,
-            category_id: categoryId, in_stock: true, specs: {},
-          });
-        });
-        if (products.length === 0) { hasMore = false; break; }
-        console.log(`[${this.storeSlug}] ${cat.slug} p${currentPage}: ${products.length} produtos`);
-        for (const p of products) await this.upsertProduct(p);
-        hasMore = $('a[rel="next"], .next, a:contains("Siguiente")').length > 0 || products.length >= 12;
-        currentPage++;
-      } catch (err) { this.stats.errors++; hasMore = false; }
+  async parseProducts(page, categoryId) {
+    const products = await page.evaluate(() => {
+      const items=[]; const seen=new Set(); const text=document.body.innerText;
+      const blocks = text.split(/(?=Codigo:\s*\d)/i);
+      for (const block of blocks) {
+        const codeMatch = block.match(/Codigo:\s*(\d+)/i);
+        if (!codeMatch || seen.has(codeMatch[1])) continue;
+        seen.add(codeMatch[1]);
+        const lines = block.split('\n').map(l=>l.trim()).filter(l=>l.length>0);
+        let brand='',name='',price=null,priceOrig=null;
+        for (const line of lines) {
+          if (line.match(/^Codigo:/i)) continue;
+          if (line.match(/^US\$\s*([\d.,]+)\s*SIN IVA/i)) {
+            const m=line.match(/US\$\s*([\d.,]+)/i);
+            if(m){let v=m[1].replace(/,/g,'');price=parseFloat(v);}
+            continue;
+          }
+          if (line.match(/^US\$\s*([\d.,]+)$/)) {
+            const m=line.match(/US\$\s*([\d.,]+)/);
+            if(m){let v=m[1].replace(/,/g,'');priceOrig=parseFloat(v);}
+            continue;
+          }
+          if (line.match(/^R\$/)) continue;
+          if (line.match(/^Veja/i)) continue;
+          if (!brand && line.length < 30 && line === line.toUpperCase()) { brand=line; continue; }
+          if (!name && line.length > 10) { name=line; }
+        }
+        if (!name || !price) continue;
+        items.push({code:codeMatch[1],brand,name:name.substring(0,500),price,priceOrig});
+      }
+      return items;
+    });
+
+    console.log(`[${this.storeSlug}] ${products.length} produtos`);
+    for (const p of products) {
+      const disc = p.priceOrig && p.price < p.priceOrig ? Math.round((1-p.price/p.priceOrig)*100) : null;
+      await this.upsertProduct({
+        name: p.name, slug: p.code, external_id: p.code,
+        price_usd: p.price, price_original: p.priceOrig,
+        discount_percent: disc, currency:'USD', brand: p.brand||null,
+        image_url:'', product_url:`${this.baseUrl}/producto/${p.code}`,
+        category_id: categoryId, in_stock:true,
+        is_promo: disc>0, promo_label: disc?`-${disc}%`:null, specs:{},
+      });
     }
   }
 }
