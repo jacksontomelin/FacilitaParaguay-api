@@ -127,56 +127,55 @@ bot.onText(/\/alertas/, async (msg) => {
 // ==================== /ponte ====================
 bot.onText(/\/ponte/, async (msg) => {
   const chatId = msg.chat.id;
+  await bot.sendMessage(chatId, '🌉 Capturando câmeras ao vivo...', { parse_mode: H });
+
   try {
     const data = await api('/ponte-status');
     const c = data.cotacao || {};
     const cams = data.cameras || [];
 
-    // Foto da câmera YouTube
-    const ytCam = cams.find(cam => cam.video_id);
-    if (ytCam) {
-      const thumbUrls = [
-        `https://img.youtube.com/vi/${ytCam.video_id}/maxresdefault.jpg`,
-        `https://img.youtube.com/vi/${ytCam.video_id}/sddefault.jpg`,
-        `https://img.youtube.com/vi/${ytCam.video_id}/hqdefault.jpg`,
-        `https://img.youtube.com/vi/${ytCam.video_id}/0.jpg`,
-      ];
-      let sent = false;
-      for (const url of thumbUrls) {
-        if (sent) break;
+    // Cotação
+    await bot.sendMessage(chatId, [
+      `💱 <b>Cotação agora:</b>`,
+      `USD/BRL: <b>R$ ${c.usd_brl?.toFixed(2) || '--'}</b>`,
+      `USD/PYG: <b>Gs ${Math.round(c.usd_pyg || 0).toLocaleString()}</b>`,
+      `BRL/PYG: <b>Gs ${Math.round(c.brl_pyg || 0).toLocaleString()}</b>`,
+    ].join('\n'), { parse_mode: H });
+
+    // Câmeras com screenshot
+    const screenshotCams = ['ponte-paraguai', 'ponte-brasil', 'br277-aduana', 'br277-viaduto'];
+
+    for (const cam of cams) {
+      const hasScreenshot = screenshotCams.includes(cam.id);
+      const isYoutube = !!cam.video_id;
+
+      let photoUrl = null;
+      if (isYoutube) {
+        photoUrl = `https://img.youtube.com/vi/${cam.video_id}/hqdefault.jpg`;
+      } else if (hasScreenshot) {
+        photoUrl = `${API_BASE}/api/camera-screenshot/${cam.id}`;
+      }
+
+      if (photoUrl) {
         try {
-          await bot.sendPhoto(chatId, url, {
-            caption: `🌉 Ponte da Amizade - AO VIVO\n\n💱 Cotação:\nUSD/BRL: R$ ${c.usd_brl?.toFixed(2) || '--'}\nUSD/PYG: Gs ${Math.round(c.usd_pyg || 0).toLocaleString()}\nBRL/PYG: Gs ${Math.round(c.brl_pyg || 0).toLocaleString()}`,
+          await bot.sendPhoto(chatId, photoUrl, {
+            caption: `📹 ${cam.name}\n${cam.source}\n🔴 AO VIVO`,
           });
-          sent = true;
+          await new Promise(r => setTimeout(r, 800));
         } catch (e) {
-          console.log(`[BOT] Thumb falhou (${url.split('/').pop()}): ${e.message}`);
+          // Fallback texto
+          await bot.sendMessage(chatId, `📹 <b>${esc(cam.name)}</b>\n<a href="${cam.url}">Assistir ao vivo →</a>`, { parse_mode: H, disable_web_page_preview: true });
         }
+      } else {
+        await bot.sendMessage(chatId, `📹 <b>${esc(cam.name)}</b> — <i>${esc(cam.source)}</i>\n<a href="${cam.url}">Assistir ao vivo →</a>`, { parse_mode: H, disable_web_page_preview: true });
+        await new Promise(r => setTimeout(r, 300));
       }
-      if (!sent) {
-        // Sem foto, manda cotação como texto
-        await bot.sendMessage(chatId, [
-          `🌉 <b>Ponte da Amizade</b>\n`,
-          `💱 <b>Cotação:</b>`,
-          `USD/BRL: <b>R$ ${c.usd_brl?.toFixed(2) || '--'}</b>`,
-          `USD/PYG: <b>Gs ${Math.round(c.usd_pyg || 0).toLocaleString()}</b>`,
-          `BRL/PYG: <b>Gs ${Math.round(c.brl_pyg || 0).toLocaleString()}</b>`,
-        ].join('\n'), { parse_mode: H });
-      }
-      await new Promise(r => setTimeout(r, 1500));
     }
 
-    // Lista de câmeras
-    const lines = [`📹 <b>Câmeras ao vivo (${cams.length})</b>\n`];
-    cams.forEach((cam, i) => {
-      lines.push(`${i+1}. <b>${esc(cam.name)}</b>`);
-      lines.push(`   <i>${esc(cam.source)}</i> — <a href="${cam.url}">Assistir</a>`);
-    });
-    lines.push('');
-    lines.push(`🔗 <a href="${data.cde_ao_vivo || 'https://cdeaovivo.com'}">CDE ao Vivo - Todas as câmeras</a>`);
-    lines.push(`🤖 <a href="${data.telegram_bot || 'https://t.me/agentecdeaovivo_bot'}">Bot alertas de trânsito</a>`);
-
-    await bot.sendMessage(chatId, lines.join('\n'), { parse_mode: H, disable_web_page_preview: true });
+    await bot.sendMessage(chatId, [
+      `\n🔗 <a href="${data.cde_ao_vivo || 'https://cdeaovivo.com'}">CDE ao Vivo - Todas as câmeras</a>`,
+      `🤖 <a href="${data.telegram_bot || 'https://t.me/agentecdeaovivo_bot'}">Bot alertas de trânsito</a>`,
+    ].join('\n'), { parse_mode: H, disable_web_page_preview: true });
   } catch (e) { bot.sendMessage(chatId, `Erro: ${e.message}`); }
 });
 

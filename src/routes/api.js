@@ -994,3 +994,49 @@ router.get('/scrape/test-gql/:store', async (req, res) => {
 
   res.json(result);
 });
+
+// GET /api/camera-screenshot/:id - Screenshot de câmera ao vivo
+const camScreenCache = {};
+router.get('/camera-screenshot/:id', async (req, res) => {
+  const camId = req.params.id;
+  
+  // Cache de 5 min
+  if (camScreenCache[camId] && Date.now() - camScreenCache[camId].time < 300000) {
+    res.set('Content-Type', 'image/jpeg');
+    return res.send(camScreenCache[camId].buffer);
+  }
+
+  // Buscar URL da câmera
+  const camsMap = {
+    'ponte-paraguai': 'https://playerv.logicahost.com.br/video-ip-camera/portovelhomamore//true/true/V2tjeGMyRXhjRmhQU0dSUFVYcFdlbGxxU210alJtdDVVbTA1YVUwd05IZFVSekZQWkcxS1ZFNVhiR3BhZWpBNStS/16:9/V1ZWb1UwMUhUa2xVVkZwTlpWUm5PUT09K1I=/fozpontedaamizadesentidoparaguai.stream/',
+    'ponte-brasil': 'https://playerv.logicahost.com.br/video-ip-camera/portovelhomamore//true/true/V2tjeGMyRXhjRmhQU0dSUFVYcFdlbGxxU210alJtdDVVbTA1YVUwd05IZFVSekZQWkcxS1ZFNVhiR3BhZWpBNStS/16:9/V1ZWb1UwMUhUa2xVVkZwTlpWUm5PUT09K1I=/fozpontedaamizadesentidobrasil.stream/',
+    'br277-aduana': 'https://playerv.logicahost.com.br/video-ip-camera/portovelhomamore//true/true/dmlkZW8wNC5sb2dpY2Fob3N0LmNvbS5icisx/16:9/YUhSMGNITTZMeTg9K1o=/fozaduanapontedaamizade.stream/',
+    'br277-viaduto': 'https://playerv.logicahost.com.br/video-ip-camera/portaldacidade//true/true/V2tjeGMyRXhjRmhQU0dST1lWUldlbGxxU210alJtdDVVbTA1YVUwd05IZFVSekZQWkcxS1ZFNVhiR3BhZWpBNStS/16:9/V1ZWb1UwMUhUa2xVVkZwTlpWUm5PUT09K1I=/fozsentidopontedaamizade01.stream/',
+  };
+
+  const url = camsMap[camId];
+  if (!url) return res.status(404).json({ error: 'Câmera não encontrada' });
+
+  try {
+    const { chromium } = require('playwright');
+    const launchOpts = { headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'] };
+    if (process.env.CHROMIUM_PATH) launchOpts.executablePath = process.env.CHROMIUM_PATH;
+    
+    const browser = await chromium.launch(launchOpts);
+    const page = await browser.newPage({ viewport: { width: 854, height: 480 } });
+    
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    await page.waitForTimeout(6000); // Esperar stream carregar
+    
+    const buffer = await page.screenshot({ type: 'jpeg', quality: 75 });
+    await browser.close();
+
+    camScreenCache[camId] = { buffer, time: Date.now() };
+    
+    res.set('Content-Type', 'image/jpeg');
+    res.set('Cache-Control', 'public, max-age=300');
+    res.send(buffer);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
