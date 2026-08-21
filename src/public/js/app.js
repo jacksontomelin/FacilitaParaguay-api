@@ -77,41 +77,40 @@ function switchPage(pg){
 
 // === PONTE / CAMERAS / COTAÇÃO ===
 async function loadPonte(){
-  showSO('Carregando câmeras...');
-  const data = await api('/ponte-status');
-  hideSO();
+  try{
+    showSO('Carregando câmeras...');
+    var data;
+    try{ data = await api('/ponte-status'); } catch(e){ data = {}; }
+    hideSO();
 
-  // Cotação
-  const c = data.cotacao;
-  document.getElementById('cotacao-bar').innerHTML = `
-    <div class="cot-card"><div class="cot-pair">${icon('dollar',13)} USD/BRL</div><div class="cot-val">R$ ${c.usd_brl?.toFixed(2)||'--'}</div></div>
-    <div class="cot-card"><div class="cot-pair">${icon('dollar',13)} USD/PYG</div><div class="cot-val">Gs ${Math.round(c.usd_pyg||0).toLocaleString()}</div></div>
-    <div class="cot-card"><div class="cot-pair">${icon('dollar',13)} BRL/PYG</div><div class="cot-val">Gs ${Math.round(c.brl_pyg||0).toLocaleString()}</div></div>`;
+    // Cotação
+    var c = data.cotacao || {};
+    var cotBar = document.getElementById('cotacao-bar');
+    if(cotBar) cotBar.innerHTML =
+      '<div class="cot-card"><div class="cot-pair">'+icon('dollar',13)+' USD/BRL</div><div class="cot-val">R$ '+(c.usd_brl?c.usd_brl.toFixed(2):'--')+'</div></div>'+
+      '<div class="cot-card"><div class="cot-pair">'+icon('dollar',13)+' USD/PYG</div><div class="cot-val">Gs '+Math.round(c.usd_pyg||0).toLocaleString()+'</div></div>'+
+      '<div class="cot-card"><div class="cot-pair">'+icon('dollar',13)+' BRL/PYG</div><div class="cot-val">Gs '+Math.round(c.brl_pyg||0).toLocaleString()+'</div></div>';
 
-  // Atualizar câmbio na calculadora
-  const calcDolar = document.getElementById('c-dolar');
-  if (calcDolar && c.usd_brl) calcDolar.value = c.usd_brl.toFixed(2);
+    // Atualizar câmbio na calculadora
+    var calcDolar = document.getElementById('c-dolar');
+    if (calcDolar && c.usd_brl) calcDolar.value = c.usd_brl.toFixed(2);
 
-  // Câmeras (mostrar as 3 primeiras, resto colapsado)
-  const cams = data.cameras || [];
-  document.getElementById('cam-grid').innerHTML = cams.map((cam, i) => `
-    <div class="cam-card">
-      <div class="cam-header">
-        <div>
-          <div class="cam-name">${icon('camera',13)} ${cam.name}</div>
-          <div class="cam-source">${cam.source}</div>
-        </div>
-        <div class="cam-live">AO VIVO</div>
-      </div>
-      ${i < 3 ? `<iframe src="${cam.type === 'youtube' ? cam.url : cam.url}" 
-        allow="autoplay; encrypted-media" allowfullscreen loading="lazy"
-        sandbox="allow-scripts allow-same-origin"></iframe>` : ''}
-      ${i >= 3 ? `<div style="padding:16px;text-align:center;color:var(--sub);font-size:.82rem;cursor:pointer" 
-        onclick="this.innerHTML='<iframe src=\\'${cam.url}\\' style=\\'width:100%;height:200px;border:none\\' allow=\\'autoplay\\' allowfullscreen loading=\\'lazy\\' sandbox=\\'allow-scripts allow-same-origin\\'></iframe>'">
-        Toque para carregar
-      </div>` : ''}
-      <a href="${cam.url}" target="_blank" class="cam-expand">${icon('arrowRight',12)} Abrir tela cheia</a>
-    </div>`).join('');
+    // Câmeras
+    var cams = data.cameras || [
+      {name:'Ponte - Sentido Paraguai',source:'CDE ao Vivo',type:'youtube',url:'https://www.youtube.com/embed/szur4H43bKk?autoplay=1&mute=1'},
+    ];
+    var camGrid = document.getElementById('cam-grid');
+    if(camGrid) camGrid.innerHTML = cams.map(function(cam, i){
+      return '<div class="cam-card">'+
+        '<div class="cam-header"><div><div class="cam-name">'+icon('camera',13)+' '+cam.name+'</div><div class="cam-source">'+cam.source+'</div></div><div class="cam-live">AO VIVO</div></div>'+
+        (i < 2 ? '<iframe src="'+cam.url+'" allow="autoplay; encrypted-media" allowfullscreen loading="lazy" sandbox="allow-scripts allow-same-origin" style="width:100%;height:200px;border:none"></iframe>' :
+        '<div style="padding:16px;text-align:center;color:var(--sub);font-size:.82rem;cursor:pointer" onclick="this.outerHTML=\'<iframe src=&quot;'+cam.url+'&quot; style=&quot;width:100%;height:200px;border:none&quot; allow=&quot;autoplay&quot; allowfullscreen loading=&quot;lazy&quot; sandbox=&quot;allow-scripts allow-same-origin&quot;></iframe>\'">Toque para carregar</div>')+
+        '<a href="'+cam.url+'" target="_blank" class="cam-expand">'+icon('arrowRight',12)+' Abrir tela cheia</a></div>';
+    }).join('');
+  }catch(e){
+    console.error('loadPonte error:',e);
+    hideSO();
+  }
 }
 
 // === AUTOCOMPLETE ===
