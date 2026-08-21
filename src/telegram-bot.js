@@ -135,19 +135,35 @@ bot.onText(/\/ponte/, async (msg) => {
     // Foto da câmera YouTube
     const ytCam = cams.find(cam => cam.video_id);
     if (ytCam) {
-      try {
-        await bot.sendPhoto(chatId, `https://img.youtube.com/vi/${ytCam.video_id}/sddefault.jpg`, {
-          caption: [
-            `🌉 Ponte da Amizade - AO VIVO`,
-            ``,
-            `💱 Cotação agora:`,
-            `USD/BRL: R$ ${c.usd_brl?.toFixed(2) || '--'}`,
-            `USD/PYG: Gs ${Math.round(c.usd_pyg || 0).toLocaleString()}`,
-            `BRL/PYG: Gs ${Math.round(c.brl_pyg || 0).toLocaleString()}`,
-          ].join('\n'),
-        });
-        await new Promise(r => setTimeout(r, 1000));
-      } catch (_) {}
+      const thumbUrls = [
+        `https://img.youtube.com/vi/${ytCam.video_id}/maxresdefault.jpg`,
+        `https://img.youtube.com/vi/${ytCam.video_id}/sddefault.jpg`,
+        `https://img.youtube.com/vi/${ytCam.video_id}/hqdefault.jpg`,
+        `https://img.youtube.com/vi/${ytCam.video_id}/0.jpg`,
+      ];
+      let sent = false;
+      for (const url of thumbUrls) {
+        if (sent) break;
+        try {
+          await bot.sendPhoto(chatId, url, {
+            caption: `🌉 Ponte da Amizade - AO VIVO\n\n💱 Cotação:\nUSD/BRL: R$ ${c.usd_brl?.toFixed(2) || '--'}\nUSD/PYG: Gs ${Math.round(c.usd_pyg || 0).toLocaleString()}\nBRL/PYG: Gs ${Math.round(c.brl_pyg || 0).toLocaleString()}`,
+          });
+          sent = true;
+        } catch (e) {
+          console.log(`[BOT] Thumb falhou (${url.split('/').pop()}): ${e.message}`);
+        }
+      }
+      if (!sent) {
+        // Sem foto, manda cotação como texto
+        await bot.sendMessage(chatId, [
+          `🌉 <b>Ponte da Amizade</b>\n`,
+          `💱 <b>Cotação:</b>`,
+          `USD/BRL: <b>R$ ${c.usd_brl?.toFixed(2) || '--'}</b>`,
+          `USD/PYG: <b>Gs ${Math.round(c.usd_pyg || 0).toLocaleString()}</b>`,
+          `BRL/PYG: <b>Gs ${Math.round(c.brl_pyg || 0).toLocaleString()}</b>`,
+        ].join('\n'), { parse_mode: H });
+      }
+      await new Promise(r => setTimeout(r, 1500));
     }
 
     // Lista de câmeras
