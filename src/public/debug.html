@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Debug FacilitaParaguay</title>
+<style>
+body{font-family:monospace;background:#0f172a;color:#e2e8f0;padding:16px;font-size:13px;max-width:600px;margin:0 auto}
+.ok{color:#10b981}.err{color:#ef4444}.warn{color:#f59e0b}.info{color:#3b82f6}
+#log{white-space:pre-wrap;line-height:1.8}
+h2{color:#3b82f6;margin:16px 0 8px}
+</style>
+</head><body>
+<h1>Debug - FacilitaParaguay</h1>
+<div id="log"></div>
+<script>
+function log(msg,cls){document.getElementById('log').innerHTML+='<div class="'+(cls||'info')+'">'+msg+'</div>';}
+function logOk(msg){log('✓ '+msg,'ok');}
+function logErr(msg){log('✗ '+msg,'err');}
+function logWarn(msg){log('⚠ '+msg,'warn');}
+
+(async function(){
+  log('=== BROWSER INFO ===');
+  log('UA: '+navigator.userAgent);
+  log('URL: '+location.href);
+  
+  // Test 1: Fetch API
+  log('\n=== TEST 1: FETCH API ===');
+  try{ await fetch('/api/health'); logOk('fetch() funciona'); }
+  catch(e){ logErr('fetch() falhou: '+e.message); }
+
+  // Test 2: API Health
+  log('\n=== TEST 2: API HEALTH ===');
+  try{
+    var r=await fetch('/api/health');
+    var d=await r.json();
+    logOk('Status: '+d.status+' | Produtos: '+d.total_products+' | Lojas: '+d.total_stores);
+  }catch(e){ logErr('Health falhou: '+e.message); }
+
+  // Test 3: API Stores
+  log('\n=== TEST 3: API STORES ===');
+  try{
+    var r=await fetch('/api/stores');
+    var d=await r.json();
+    logOk(d.length+' lojas carregadas');
+  }catch(e){ logErr('Stores falhou: '+e.message); }
+
+  // Test 4: API Deals
+  log('\n=== TEST 4: API DEALS ===');
+  try{
+    var r=await fetch('/api/deals');
+    var d=await r.json();
+    logOk('Deals: disc='+((d.biggest_discount||[]).length)+' new='+((d.new_arrival||[]).length)+' drops='+((d.price_drop||[]).length));
+  }catch(e){ logErr('Deals falhou: '+e.message); }
+
+  // Test 5: API Trending
+  log('\n=== TEST 5: API TRENDING ===');
+  try{
+    var r=await fetch('/api/trending');
+    var d=await r.json();
+    logOk('Trending: '+d.length+' produtos');
+  }catch(e){ logErr('Trending falhou: '+e.message); }
+
+  // Test 6: icons.js
+  log('\n=== TEST 6: ICONS.JS ===');
+  try{
+    var s=document.createElement('script');
+    s.src='/js/icons.js';
+    s.onload=function(){
+      if(typeof icon==='function'){logOk('icon() carregado: '+Object.keys(ICONS).length+' ícones');}
+      else{logErr('icon() não definido');}
+      test7();
+    };
+    s.onerror=function(){logErr('icons.js falhou ao carregar');test7();};
+    document.head.appendChild(s);
+  }catch(e){logErr('Erro icons: '+e.message);test7();}
+
+  function test7(){
+    log('\n=== TEST 7: APP.JS LOAD ===');
+    try{
+      var s=document.createElement('script');
+      s.src='/js/app.js';
+      s.onload=function(){
+        logOk('app.js carregou');
+        test8();
+      };
+      s.onerror=function(e){logErr('app.js FALHOU ao carregar');test8();};
+      document.head.appendChild(s);
+    }catch(e){logErr('Erro app: '+e.message);test8();}
+  }
+
+  function test8(){
+    log('\n=== TEST 8: FUNÇÕES DEFINIDAS ===');
+    var fns=['icon','esc','card','loadHome','switchPage','api','hScroll','emptyState','openProduct','calcular'];
+    fns.forEach(function(fn){
+      if(typeof window[fn]==='function') logOk(fn+'() OK');
+      else logErr(fn+'() NÃO DEFINIDA');
+    });
+
+    log('\n=== TEST 9: DOM ELEMENTS ===');
+    var els=['splash','page-home','main-nav','global-search','page-content','modal'];
+    els.forEach(function(id){
+      var el=document.getElementById(id);
+      if(el) logOk('#'+id+' existe');
+      else logWarn('#'+id+' NÃO encontrado (normal nesta página)');
+    });
+
+    log('\n=== TEST 10: LOCALSTORAGE ===');
+    try{localStorage.setItem('test','1');localStorage.removeItem('test');logOk('localStorage funciona');}
+    catch(e){logErr('localStorage bloqueado: '+e.message);}
+
+    log('\n=== CONCLUÍDO ===');
+    log('Se todos os testes de API passaram e icons/app carregaram,');
+    log('o problema está na inicialização do DOM do app.js');
+    log('(elementos que app.js espera não existem nesta página de debug)');
+  }
+})();
+</script>
+</body></html>
