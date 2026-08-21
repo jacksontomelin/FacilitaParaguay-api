@@ -36,6 +36,11 @@ async function start() {
       console.log(`[SERVER] Rodando em http://0.0.0.0:${PORT}`);
     });
 
+    // Telegram Bot
+    if (process.env.TELEGRAM_BOT_TOKEN) {
+      try { require('./telegram-bot'); } catch (e) { console.error('[BOT] Erro:', e.message); }
+    }
+
     // CRON: executar scrapers periodicamente
     const schedule = process.env.CRON_SCHEDULE || '0 */6 * * *';
     cron.schedule(schedule, async () => {
