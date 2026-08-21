@@ -572,17 +572,50 @@ router.get('/products/:id/similar', async (req, res) => {
 // GET /api/products/:id/price-rank - Ranking de preço entre lojas
 router.get('/products/:id/price-rank', async (req, res) => {
   try {
-    const product = await pool.query('SELECT name, brand, price_usd FROM products WHERE id = $1', [req.params.id]);
+    const product = await pool.query('SELECT name, brand, price_usd, external_id, sku FROM products WHERE id = $1', [req.params.id]);
     if (!product.rows.length) return res.json({});
-    const { name, price_usd } = product.rows[0];
+    const { name, price_usd, external_id, sku } = product.rows[0];
 
-    const result = await pool.query(`
-      SELECT p.id, p.price_usd, s.name as store_name, s.slug as store_slug, p.product_url,
-             p.is_promo, p.discount_percent
-      FROM products p LEFT JOIN stores s ON p.store_id = s.id
-      WHERE p.name % $1 AND p.price_usd IS NOT NULL
-      ORDER BY p.price_usd ASC
-    `, [name]);
+    // Extrair modelo do nome (ex: "Z6 II", "iPhone 16 Pro", "RTX 4070")
+    // Buscar produtos com nome MUITO similar (similarity > 0.5) OU mesmo SKU/external_id
+    let result;
+    if (sku || external_id) {
+      result = await pool.query(`
+        SELECT p.id, p.price_usd, s.name as store_name, s.slug as store_slug, p.product_url,
+               p.is_promo, p.discount_percent, p.name,
+               similarity(p.name, $1) as sim
+        FROM products p LEFT JOIN stores s ON p.store_id = s.id
+        WHERE (p.external_id = $2 OR p.sku = $3 OR (p.name % $1 AND similarity(p.name, $1) > 0.5))
+          AND p.price_usd IS NOT NULL AND p.store_id != (SELECT store_id FROM products WHERE id = $4)
+        ORDER BY p.price_usd ASC LIMIT 20
+      `, [name, external_id || '___', sku || '___', req.params.id]);
+    } else {
+      result = await pool.query(`
+        SELECT p.id, p.price_usd, s.name as store_name, s.slug as store_slug, p.product_url,
+               p.is_promo, p.discount_percent, p.name,
+               similarity(p.name, $1) as sim
+        FROM products p LEFT JOIN stores s ON p.store_id = s.id
+        WHERE p.name % $1 AND similarity(p.name, $1) > 0.5
+          AND p.price_usd IS NOT NULL
+        ORDER BY p.price_usd ASC LIMIT 20
+      `, [name]);
+    }
+
+    // Incluir o produto atual na lista
+    const allPrices = [
+      { id: parseInt(req.params.id), price_usd, store_name: product.rows[0].store_name || '', is_current: true },
+      ...result.rows,
+    ].sort((a, b) => parseFloat(a.price_usd) - parseFloat(b.price_usd));
+
+    // Deduplicar por loja (manter menor preço por loja)
+    const byStore = {};
+    allPrices.forEach(p => {
+      const key = p.store_name || p.store_slug || p.id;
+      if (!byStore[key] || parseFloat(p.price_usd) < parseFloat(byStore[key].price_usd)) {
+        byStore[key] = p;
+      }
+    });
+    const unique = Object.values(byStore).sort((a, b) => parseFloat(a.price_usd) - parseFloat(b.price_usd));
 
     const history = await pool.query(`
       SELECT MIN(price_usd)::numeric(10,2) as all_time_low,
@@ -593,9 +626,9 @@ router.get('/products/:id/price-rank', async (req, res) => {
 
     res.json({
       current_price: price_usd,
-      rank: result.rows.findIndex(r => r.id === parseInt(req.params.id)) + 1,
-      total_stores: result.rows.length,
-      all_prices: result.rows,
+      rank: unique.findIndex(r => r.is_current || r.id === parseInt(req.params.id)) + 1,
+      total_stores: unique.length,
+      all_prices: unique,
       history_stats: history.rows[0] || {},
       is_lowest: history.rows[0]?.all_time_low && parseFloat(price_usd) <= parseFloat(history.rows[0].all_time_low),
     });

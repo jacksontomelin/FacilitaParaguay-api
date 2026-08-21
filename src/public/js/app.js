@@ -359,8 +359,16 @@ function drawChart(hist){const cv=document.getElementById('pc');if(!cv)return;co
     ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);ctx.fillStyle='#1e6bd6';ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke();});}
 
 // Modal close
-document.querySelector('.modal-sheet-bg')?.addEventListener('click',()=>document.getElementById('modal').classList.add('hidden'));
-document.querySelector('.modal-handle')?.addEventListener('click',()=>document.getElementById('modal').classList.add('hidden'));
+try{
+  var modalBg = document.querySelector('.modal-sheet-bg');
+  var modalHandle = document.querySelector('.modal-handle');
+  var modalEl = document.getElementById('modal');
+  function closeModal(){if(modalEl)modalEl.classList.add('hidden');}
+  if(modalBg){modalBg.onclick=closeModal;modalBg.ontouchend=function(e){e.preventDefault();closeModal();};}
+  if(modalHandle){modalHandle.onclick=closeModal;modalHandle.ontouchend=function(e){e.preventDefault();closeModal();};}
+  // Fechar com botão de voltar (ESC)
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')closeModal();});
+}catch(e){}
 
 function esc(s){if(!s)return'';const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
 

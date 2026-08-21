@@ -140,7 +140,8 @@
   <div id="modal" class="modal-sheet hidden">
     <div class="modal-sheet-bg"></div>
     <div class="modal-sheet-content" id="modal-content">
-      <div class="modal-handle"></div>
+      <div class="modal-handle" onclick="document.getElementById('modal').classList.add('hidden')"></div>
+      <button class="modal-x" onclick="document.getElementById('modal').classList.add('hidden')">✕</button>
       <div id="modal-body"></div>
     </div>
   </div>

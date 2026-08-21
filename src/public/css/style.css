@@ -284,3 +284,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro','Segoe UI',sans-serif
 .btn-scrape-all{background:linear-gradient(135deg,var(--green),#14b8a6);color:#fff;border:none;padding:14px 28px;border-radius:14px;font-size:.95rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:8px;transition:.2s;box-shadow:0 4px 14px rgba(16,185,129,.3);}
 .btn-scrape-all:active{transform:scale(.96);}
 .empty-state .es-stores{font-size:.7rem;color:var(--sub);margin-top:12px;}
+
+/* Modal close button */
+.modal-x{position:absolute;top:12px;right:16px;background:var(--bg);border:1.5px solid var(--border);width:32px;height:32px;border-radius:10px;font-size:16px;color:var(--sub);cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10;transition:.2s;}
+.modal-x:active{background:var(--red-bg);color:var(--red);}
