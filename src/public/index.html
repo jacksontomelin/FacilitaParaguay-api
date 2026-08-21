@@ -148,6 +148,23 @@
   <div id="toast" class="toast hidden"><span></span></div>
 
   <script src="/js/icons.js"></script>
+  <script>
+    // Failsafe: splash SEMPRE some em 5s, não importa o que aconteça
+    setTimeout(function(){
+      var sp=document.getElementById('splash');
+      if(sp){sp.style.opacity='0';setTimeout(function(){sp.remove()},500);}
+    },5000);
+  </script>
   <script src="/js/app.js"></script>
+  <script>
+    // Catch global errors
+    window.onerror=function(msg,url,line){
+      console.error('ERRO:',msg,'em',url,':',line);
+      var sp=document.getElementById('splash');
+      if(sp){sp.style.opacity='0';setTimeout(function(){sp.remove()},300);}
+      var ph=document.getElementById('page-home');
+      if(ph&&!ph.innerHTML.trim()) ph.innerHTML='<p style="padding:40px;text-align:center;color:#94a3b8">Erro ao carregar: '+msg+'</p>';
+    };
+  </script>
 </body>
 </html>

@@ -107,47 +107,55 @@ document.addEventListener('click',e=>{if(!e.target.closest('.search-wrap'))acD.c
 // === HOME ===
 async function loadHome(){
   const sp=document.getElementById('splash');
-  const spSt=document.getElementById('splash-status');
-  const spSp=document.getElementById('splash-steps');
-
-  function step(msg,st='loading'){
-    if(spSp)spSp.innerHTML+=`<div class="step" style="animation-delay:${spSp.children.length*0.1}s"><span class="dot ${st}"></span>${msg}</div>`;
-    if(spSt)spSt.textContent=msg;
-  }
-  function closeSp(){if(sp){sp.classList.add('out');setTimeout(()=>sp.remove(),500);}}
-  const spTO=setTimeout(()=>{step('Timeout...','err');setTimeout(closeSp,500);},6000);
+  function closeSp(){if(sp){sp.style.opacity='0';setTimeout(()=>{try{sp.remove()}catch(_){}},500);}}
+  
+  // Splash some em 3s garantido
+  setTimeout(closeSp, 3000);
 
   try{
-    step('Verificando servidor...');
-    let health=null;
-    try{const r=await fetch(A+'/health',{signal:AbortSignal.timeout(4000)});health=await r.json();
-      step(`${health.total_stores} lojas, ${health.total_products} produtos`,'ok');
-    }catch(e){step('Servidor offline','err');clearTimeout(spTO);setTimeout(closeSp,800);
-      document.getElementById('page-home').innerHTML=emptyState();return;}
-
-    if(!health.total_products||health.total_products===0){
-      step('Banco vazio','ok');clearTimeout(spTO);setTimeout(closeSp,600);
+    // Health check
+    const h=await api('/health');
+    
+    if(!h.total_products || h.total_products===0){
+      closeSp();
       document.getElementById('page-home').innerHTML=emptyState();
       try{const st=await api('/stores');populateSelectsFromStores(st);}catch(_){}
       return;
     }
 
-    step('Carregando ofertas...');
-    const[d,t]=await Promise.all([api('/deals'),api('/trending')]);
-    step('Pronto!','ok');clearTimeout(spTO);setTimeout(closeSp,300);
+    // Carregar dados
+    const[d,t]=await Promise.all([api('/deals').catch(()=>({})),api('/trending').catch(()=>[])]);
+    closeSp();
 
-    hScroll('h-disc',d.biggest_discount||[]);hScroll('h-new',d.new_arrival||[]);hScroll('h-drops',d.price_drop||[]);hScroll('h-trend',t||[]);
+    hScroll('h-disc',d.biggest_discount||[]);
+    hScroll('h-new',d.new_arrival||[]);
+    hScroll('h-drops',d.price_drop||[]);
+    hScroll('h-trend',t||[]);
+
+    // Ticker
     const all=[...(d.biggest_discount||[]),...(d.price_drop||[])].filter(x=>x.discount_percent>5);
-    if(all.length){const it=all.map(x=>`<span class="ticker-item"><span class="ticker-badge">${icon('percent',10)} -${x.discount_percent}%</span> ${esc(x.name?.substring(0,40))} <strong>US$ ${parseFloat(x.price_usd).toFixed(2)}</strong></span>`).join('');
-      document.getElementById('ticker').innerHTML=`<div class="ticker-inner">${it}${it}</div>`;}
+    if(all.length){
+      const it=all.map(x=>'<span class="ticker-item"><span class="ticker-badge">'+icon('percent',10)+' -'+x.discount_percent+'%</span> '+esc(x.name?.substring(0,40))+' <strong>US$ '+parseFloat(x.price_usd).toFixed(2)+'</strong></span>').join('');
+      document.getElementById('ticker').innerHTML='<div class="ticker-inner">'+it+it+'</div>';
+    }
+  }catch(e){
+    console.error('loadHome error:',e);
+    closeSp();
+  }
 
-  }catch(e){step('Erro: '+e.message,'err');clearTimeout(spTO);setTimeout(closeSp,800);
-    document.getElementById('page-home').innerHTML=emptyState();}
+  // Chips
+  try{
+    var cc=document.getElementById('cat-chips');
+    if(cc)cc.innerHTML=[{l:'Descontos',c:'chip-fire',q:'discount'},{l:'Novidades',c:'chip-new',q:'newest'},{l:'Perfumes',c:'chip-perf',q:'perfume'},{l:'Tech',c:'chip-tech',q:'celular'},{l:'Games',c:'chip-game',q:'playstation'},{l:'Casa',c:'chip-home',q:'air fryer'}].map(function(c){return '<button class="chip '+c.c+'" onclick="gS.value=\''+c.q+'\';switchPage(\'search\')">'+c.l+'</button>';}).join('');
+  }catch(_){}
 
-  const cc=document.getElementById('cat-chips');
-  if(cc)cc.innerHTML=[{l:'Descontos',c:'chip-fire',q:'discount'},{l:'Novidades',c:'chip-new',q:'newest'},{l:'Perfumes',c:'chip-perf',q:'perfume'},{l:'Tech',c:'chip-tech',q:'celular'},{l:'Games',c:'chip-game',q:'playstation'},{l:'Casa',c:'chip-home',q:'air fryer'}].map(c=>`<button class="chip ${c.c}" onclick="gS.value='${c.q}';switchPage('search')">${c.l}</button>`).join('');
-  const rv=RV.g();if(rv.length){const rs=document.getElementById('rv-sec');if(rs){rs.classList.remove('hidden');hScroll('h-recent',rv.map(r=>({...r,price_usd:r.price,image_url:r.image,store_name:r.store})));}}
-  try{const st=await api('/stores');populateSelectsFromStores(st);}catch(_){}
+  // Recent
+  try{
+    var rv=RV.g();if(rv.length){var rs=document.getElementById('rv-sec');if(rs){rs.classList.remove('hidden');hScroll('h-recent',rv.map(function(r){return{id:r.id,price_usd:r.price,image_url:r.image,store_name:r.store,name:r.name};}));}}
+  }catch(_){}
+
+  // Selects
+  try{var st=await api('/stores');populateSelectsFromStores(st);}catch(_){}
 }
 
 function populateSelectsFromStores(stores){
