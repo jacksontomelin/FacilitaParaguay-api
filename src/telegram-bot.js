@@ -154,19 +154,47 @@ bot.onText(/\/ponte/, async (msg) => {
     const data = await r.json();
     const c = data.cotacao || {};
 
+    // Cotação primeiro
     let text = `🌉 *Ponte da Amizade*\n\n`;
     text += `💱 *Cotação agora:*\n`;
     text += `   USD/BRL: *R$ ${c.usd_brl?.toFixed(2) || '--'}*\n`;
     text += `   USD/PYG: *Gs ${Math.round(c.usd_pyg || 0).toLocaleString()}*\n`;
-    text += `   BRL/PYG: *Gs ${Math.round(c.brl_pyg || 0).toLocaleString()}*\n\n`;
-    text += `📹 *Câmeras ao vivo:*\n`;
-    (data.cameras || []).forEach(cam => {
-      text += `   • ${cam.name}\n`;
-    });
-    text += `\n🔗 [Ver câmeras ao vivo](${data.cde_ao_vivo})\n`;
-    text += `🤖 [Bot alertas CDE](${data.telegram_bot})`;
+    text += `   BRL/PYG: *Gs ${Math.round(c.brl_pyg || 0).toLocaleString()}*\n`;
+    await bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
 
-    bot.sendMessage(chatId, text, { parse_mode: 'Markdown', disable_web_page_preview: true });
+    // Enviar thumbnails das câmeras
+    const cams = data.cameras || [];
+    for (const cam of cams) {
+      let thumbUrl = null;
+      let streamUrl = cam.url;
+
+      // YouTube: thumbnail direto
+      if (cam.video_id) {
+        thumbUrl = `https://img.youtube.com/vi/${cam.video_id}/hqdefault.jpg`;
+      } else if (cam.type === 'youtube' && cam.url.includes('embed/')) {
+        const vid = cam.url.match(/embed\/([^?]+)/)?.[1];
+        if (vid) thumbUrl = `https://img.youtube.com/vi/${vid}/hqdefault.jpg`;
+      }
+
+      if (thumbUrl) {
+        try {
+          await bot.sendPhoto(chatId, thumbUrl, {
+            caption: `📹 *${cam.name}*\n${cam.source}\n\n[Assistir ao vivo](${cam.url})`,
+            parse_mode: 'Markdown',
+          });
+        } catch (_) {
+          // Se thumbnail falhar, manda só texto
+          await bot.sendMessage(chatId, `📹 *${cam.name}*\n${cam.source}\n[Assistir](${cam.url})`, { parse_mode: 'Markdown', disable_web_page_preview: true });
+        }
+      } else {
+        // Câmeras sem thumbnail: manda link com preview
+        await bot.sendMessage(chatId, `📹 *${cam.name}*\n${cam.source}\n[Assistir ao vivo](${cam.url})`, { parse_mode: 'Markdown' });
+      }
+
+      await new Promise(r => setTimeout(r, 300)); // Não spammar
+    }
+
+    await bot.sendMessage(chatId, `🔗 [CDE ao Vivo \\- Todas as câmeras](${data.cde_ao_vivo})\n🤖 [Bot alertas trânsito](${data.telegram_bot})`, { parse_mode: 'MarkdownV2', disable_web_page_preview: true });
   } catch (e) {
     bot.sendMessage(chatId, `Erro: ${e.message}`);
   }
